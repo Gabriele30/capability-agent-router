@@ -64,6 +64,10 @@ hard routing rules. A provider result may conservatively escalate an automatic
 route, while `car task` retains its existing execution behavior and Codex
 execution is not wired yet.
 
+`car task` uses that same routing evaluation. Only a final L0 route can execute
+the existing verified deterministic capability; Gemini, Gemini-to-Codex, Codex,
+and PLAN routes currently report their execution as unavailable.
+
 ```bash
 car analyze "Fix CSS spacing"
 car analyze "Fix authentication bypass"
@@ -87,10 +91,14 @@ byte-preserving rollback rather than Git restoration.
 car analyze "Format car/router/engine.py"
 car task "Format car/router/engine.py" --dry-run
 car task "Format car/router/engine.py"
+car providers
 ```
 
 L0 never executes command text supplied by the user and does not install tools.
-Gemini and Codex execution remain unimplemented.
+Implemented: deterministic routing, verified L0 execution, Gemini
+classification, lazy consultation, conservative fusion, and unified
+`analyze`/`task` routing. Gemini coding execution and Codex coding execution
+remain unimplemented.
 
 ## Project status
 

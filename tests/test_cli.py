@@ -1,10 +1,71 @@
+from importlib import import_module
 from pathlib import Path
 
 from typer.testing import CliRunner
 
+from car.application.routing import evaluate_analysis
 from car.cli.app import app
+from car.config.models import CarConfig
+from car.providers.models import (
+    ProviderCapabilities,
+    ProviderClassification,
+    ProviderHealth,
+    ProviderStatus,
+)
+from car.router.models import Complexity, Route, ScopeSize, TaskCategory
 
 runner = CliRunner()
+
+
+class _FakeProvider:
+    def __init__(self, route: Route = Route.CODEX, confidence: float = 0.95) -> None:
+        self.route = route
+        self.confidence = confidence
+        self.calls = 0
+        self.failure: RuntimeError | None = None
+
+    def capabilities(self):
+        return ProviderCapabilities(supports_classification=True)
+
+    def health(self):
+        return ProviderHealth(status=ProviderStatus.CONFIGURED, configured=True)
+
+    def classify(self, context):
+        self.calls += 1
+        if self.failure:
+            raise self.failure
+        return ProviderClassification(
+            categories=[TaskCategory.FRONTEND],
+            complexity=Complexity.LOW,
+            risk=0.8,
+            scope=ScopeSize.SMALL,
+            suggested_route=self.route,
+            confidence=self.confidence,
+        )
+
+
+def _configured_context(git_repository: Path) -> None:
+    context = git_repository / ".car-context"
+    context.mkdir()
+    (context / "config.json").write_text(
+        CarConfig(providers={"gemini": {"enabled": True, "model": "test-model"}}).model_dump_json(),
+        encoding="utf-8",
+    )
+
+
+def _patch_cli_provider(monkeypatch, provider: _FakeProvider) -> None:
+    cli_module = import_module("car.cli.app")
+
+    def evaluate_with_fake(request, repository, mode, config):
+        return evaluate_analysis(
+            request,
+            repository,
+            mode,
+            config,
+            provider_factory=lambda _: provider,
+        )
+
+    monkeypatch.setattr(cli_module, "evaluate_analysis", evaluate_with_fake)
 
 
 def test_version() -> None:
@@ -81,6 +142,94 @@ def test_analyze_accepts_hyphenated_gemini_to_codex_mode(git_repository: Path, m
 
     assert result.exit_code == 0
     assert "Route:      GEMINI_TO_CODEX" in result.stdout
+
+
+def test_task_uses_provider_escalated_final_route(git_repository: Path, monkeypatch) -> None:
+    _configured_context(git_repository)
+    provider = _FakeProvider(route=Route.CODEX)
+    _patch_cli_provider(monkeypatch, provider)
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["task", "Fix CSS spacing in dashboard"])
+
+    assert result.exit_code == 0
+    assert provider.calls == 1
+    assert "Final\nRoute:      CODEX" in result.stdout
+    assert "Codex execution is not implemented yet." in result.stdout
+
+
+def test_task_low_confidence_and_l0_skip_provider(git_repository: Path, monkeypatch) -> None:
+    _configured_context(git_repository)
+    (git_repository / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    provider = _FakeProvider(route=Route.CODEX, confidence=0.20)
+    _patch_cli_provider(monkeypatch, provider)
+    monkeypatch.chdir(git_repository)
+    low_confidence = runner.invoke(app, ["task", "Fix CSS spacing"])
+    l0 = runner.invoke(app, ["task", "Format sample.py", "--dry-run"])
+
+    assert low_confidence.exit_code == 0
+    assert "Final\nRoute:      GEMINI" in low_confidence.stdout
+    assert "Gemini coding execution is not implemented yet." in low_confidence.stdout
+    assert l0.exit_code == 0
+    assert provider.calls == 1
+    assert "Dry run: Nothing executed." in l0.stdout
+
+
+def test_task_json_and_providers_do_not_expose_secret(git_repository: Path, monkeypatch) -> None:
+    _configured_context(git_repository)
+    (git_repository / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    monkeypatch.setenv("GEMINI_API_KEY", "super-secret-test-key")
+    monkeypatch.chdir(git_repository)
+    task_result = runner.invoke(app, ["task", "Format sample.py", "--dry-run", "--json"])
+    providers_result = runner.invoke(app, ["providers", "--json"])
+
+    assert task_result.exit_code == 0
+    assert '"routing"' in task_result.stdout
+    assert providers_result.exit_code == 0
+    assert '"local_status"' in providers_result.stdout
+    assert "super-secret-test-key" not in task_result.stdout
+    assert "super-secret-test-key" not in providers_result.stdout
+
+
+def test_providers_reports_local_disabled_status(git_repository: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["providers"])
+
+    assert result.exit_code == 0
+    assert "Local status:   DISABLED" in result.stdout
+    assert "Live checked:   no" in result.stdout
+
+
+def test_task_provider_failure_is_safe_and_single_call(git_repository: Path, monkeypatch) -> None:
+    _configured_context(git_repository)
+    provider = _FakeProvider()
+    provider.failure = RuntimeError("timeout")
+    _patch_cli_provider(monkeypatch, provider)
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["task", "Fix CSS spacing"])
+
+    assert result.exit_code == 0
+    assert provider.calls == 1
+    assert "Provider classification failed safely." in result.stdout
+    assert "Final\nRoute:      GEMINI" in result.stdout
+
+
+def test_providers_reports_missing_model_and_credentials(git_repository: Path, monkeypatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    context = git_repository / ".car-context"
+    context.mkdir()
+    (context / "config.json").write_text(
+        CarConfig(providers={"gemini": {"enabled": True}}).model_dump_json(), encoding="utf-8"
+    )
+    monkeypatch.chdir(git_repository)
+    no_model = runner.invoke(app, ["providers"])
+    (context / "config.json").write_text(
+        CarConfig(providers={"gemini": {"enabled": True, "model": "test-model"}}).model_dump_json(),
+        encoding="utf-8",
+    )
+    no_credentials = runner.invoke(app, ["providers"])
+
+    assert "Local status:   NOT_CONFIGURED" in no_model.stdout
+    assert "Local status:   MISSING_CREDENTIALS" in no_credentials.stdout
 
 
 def test_l0_dry_run_does_not_execute(git_repository: Path, monkeypatch) -> None:

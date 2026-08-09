@@ -72,6 +72,12 @@ The normal CLI remains safe when Gemini is disabled, incomplete, or unavailable;
 L0, hard rules, and explicit modes do not call the provider. `car analyze` is
 read-only with respect to the workspace, and Gemini remains classification-only.
 
+Milestone 4D2-A makes `car task` consume the same `RoutingEvaluation`. Only a
+final L0 route enters the existing execution and verification pipeline. All
+other routes report that coding execution is not implemented. `car providers`
+reports local-only Gemini configuration health and the planned external Codex
+runtime boundary; it does not make network calls or invoke Codex.
+
 ## Planned
 
 The provider foundation defines provider-neutral classification contracts and a

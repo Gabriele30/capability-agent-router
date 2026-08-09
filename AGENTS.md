@@ -43,6 +43,10 @@ Project: CAR — Capability Agent Router
   never inside the deterministic router, fusion engine, or consultation gate.
 - `car analyze` may consult a configured classifier but must remain read-only
   with respect to the repository. `car task` wiring changes require an explicit milestone.
+- `car task` must consume the shared routing evaluation and may write only when
+  its final route is L0. Provider classification is advisory, never coding execution.
+- Provider status commands are local-only; never probe provider networks or
+  external Codex authentication merely to display status.
 - Live provider tests must remain explicit opt-in and never run in standard CI.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.

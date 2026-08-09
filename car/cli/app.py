@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -14,7 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from car import __version__
-from car.application.routing import evaluate_analysis
+from car.application.routing import build_gemini_provider, evaluate_analysis
 from car.config.models import CarConfig
 from car.execution.models import ExecutionResult, ExecutionStatus
 from car.l0.executor import L0Executor
@@ -23,7 +24,7 @@ from car.repository.models import RepositoryState
 from car.repository.scanner import RepositoryScanError, scan_repository
 from car.router.consultation import RoutingEvaluation
 from car.router.engine import DecisionEngine
-from car.router.models import RoutingDecision, TaskRequest, UserMode
+from car.router.models import Route, RoutingDecision, TaskRequest, UserMode
 
 app = typer.Typer(add_completion=False, help="Capability-aware software engineering task routing.")
 console = Console()
@@ -227,6 +228,7 @@ def _print_evaluation(request: TaskRequest, evaluation: RoutingEvaluation) -> No
     elif consultation.attempted:
         console.print("Status:     FAILED")
         console.print(f"Error:      {(consultation.error_kind or 'unknown_error').upper()}")
+        console.print("Provider classification failed safely.")
     else:
         console.print("Status:     SKIPPED")
         skip_reason = consultation.skip_reason
@@ -243,6 +245,21 @@ def _print_evaluation(request: TaskRequest, evaluation: RoutingEvaluation) -> No
     console.print("\n[bold]Final[/]")
     console.print(f"Route:      {evaluation.final_decision.route.value.upper()}")
     console.print(f"Risk:       {evaluation.final_risk:.2f}")
+
+
+def _execution_unavailable_message(route: Route) -> str:
+    messages = {
+        Route.GEMINI: "Gemini coding execution is not implemented yet.",
+        Route.GEMINI_TO_CODEX: "Gemini-to-Codex execution is not implemented yet.",
+        Route.CODEX: "Codex execution is not implemented yet.",
+        Route.PLAN: "Planning execution is not implemented yet.",
+    }
+    return messages[route]
+
+
+def _print_execution_unavailable(route: Route) -> None:
+    console.print("\n[bold]Execution[/]")
+    console.print(_execution_unavailable_message(route))
 
 
 def _print_plan(plan) -> None:
@@ -309,35 +326,59 @@ def analyze(
 
 @app.command()
 def task(
-    description: Annotated[str, typer.Argument(help="Task to acquire for future routing.")],
+    description: Annotated[
+        str, typer.Argument(help="Task to route and execute only if eligible for L0.")
+    ],
     mode: Annotated[UserMode, typer.Option(help="Routing mode.")] = UserMode.AUTO,
     dry_run: Annotated[bool, typer.Option(help="Build an L0 plan without executing it.")] = False,
     as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
 ) -> None:
-    """Acquire a task, decide its route, and stop before provider execution."""
-    request, repository, decision = _routing_inputs(description, mode)
-    if decision.route.value != "l0":
+    """Route a task, executing only an eligible deterministic L0 plan."""
+    try:
+        request = TaskRequest(description=description)
+    except ValidationError as error:
+        console.print(f"[red]Error:[/] Invalid task: {error.errors()[0]['msg']}")
+        raise typer.Exit(code=2) from error
+    repository = _scan_or_exit()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    _, evaluation = evaluate_analysis(request, repository, mode, config)
+    decision = evaluation.final_decision
+    if decision.route != Route.L0:
         if as_json:
             console.print(
-                json.dumps({"decision": decision.model_dump(mode="json"), "execution": None})
+                json.dumps(
+                    {
+                        "routing": evaluation.model_dump(mode="json"),
+                        "execution": {
+                            "implemented": False,
+                            "message": _execution_unavailable_message(decision.route),
+                        },
+                    },
+                    indent=2,
+                )
             )
             return
         _title()
-        _print_decision(request, mode, decision)
-        console.print("\n[yellow]Execution not implemented for this route.[/]")
+        _print_evaluation(request, evaluation)
+        _print_execution_unavailable(decision.route)
         return
-    _, config_path, _ = _context_paths(repository.root)
-    config = _load_config(config_path) if config_path.exists() else CarConfig()
     try:
         plan = resolve_l0_plan(request, repository, config.l0)
     except L0ResolutionError as error:
         if as_json:
             console.print(
-                json.dumps({"decision": decision.model_dump(mode="json"), "error": str(error)})
+                json.dumps(
+                    {
+                        "routing": evaluation.model_dump(mode="json"),
+                        "execution": {"error": str(error)},
+                    },
+                    indent=2,
+                )
             )
         else:
             _title()
-            _print_decision(request, mode, decision)
+            _print_evaluation(request, evaluation)
             label = (
                 "L0 TOOL UNAVAILABLE"
                 if "ruff is not available" in str(error)
@@ -347,22 +388,86 @@ def task(
         raise typer.Exit(code=1) from error
     if dry_run:
         if as_json:
-            console.print(plan.model_dump_json(indent=2))
+            console.print(
+                json.dumps(
+                    {
+                        "routing": evaluation.model_dump(mode="json"),
+                        "execution": {
+                            "implemented": True,
+                            "dry_run": True,
+                            "plan": plan.model_dump(mode="json"),
+                        },
+                    },
+                    indent=2,
+                )
+            )
             return
         _title()
+        _print_evaluation(request, evaluation)
         _print_plan(plan)
         console.print("\nDry run: Nothing executed.")
         return
     result = L0Executor().execute(plan)
     if as_json:
-        console.print(result.model_dump_json(indent=2))
+        console.print(
+            json.dumps(
+                {
+                    "routing": evaluation.model_dump(mode="json"),
+                    "execution": {"implemented": True, "result": result.model_dump(mode="json")},
+                },
+                indent=2,
+            )
+        )
         raise typer.Exit(code=0 if result.status == ExecutionStatus.SUCCEEDED else 1)
     _title()
-    _print_decision(request, mode, decision)
+    _print_evaluation(request, evaluation)
     _print_plan(plan)
     _print_execution(result)
     if result.status != ExecutionStatus.SUCCEEDED:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def providers(
+    as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
+) -> None:
+    """Show local provider configuration and health without network access."""
+    repository = _scan_or_exit()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    gemini_config = config.providers.gemini
+    health = build_gemini_provider(config).health()
+    credentials_present = bool(os.environ.get(gemini_config.api_key_env))
+    report = {
+        "gemini": {
+            "enabled": gemini_config.enabled,
+            "model": gemini_config.model,
+            "credential_env": gemini_config.api_key_env,
+            "credentials_present": credentials_present,
+            "local_status": health.status.value,
+        },
+        "codex": {"execution": "not_implemented", "authentication": "external_runtime"},
+    }
+    if as_json:
+        console.print(json.dumps(report, indent=2))
+        return
+    _title()
+    console.print("[bold]CAR Providers[/]")
+    console.print("\n[bold]Gemini[/]")
+    console.print(f"Enabled:        {'yes' if gemini_config.enabled else 'no'}")
+    console.print(f"Model:          {gemini_config.model or 'not configured'}")
+    console.print(f"Credentials:    {'configured' if credentials_present else 'missing'}")
+    console.print(f"Local status:   {health.status.value.upper()}")
+    console.print("Live checked:   no")
+    if health.status.value == "disabled":
+        console.print("Gemini provider is disabled.")
+    elif health.status.value == "not_configured":
+        console.print("Gemini model is not configured.")
+    elif health.status.value == "missing_credentials":
+        console.print(f"Credential environment variable {gemini_config.api_key_env} is not set.")
+    console.print("\n[bold]Codex[/]")
+    console.print("Execution:      not implemented")
+    console.print("Authentication: external/local Codex runtime")
 
 
 def main() -> None:

@@ -12,6 +12,13 @@ from car.router.models import TaskRequest, UserMode
 ProviderFactory = Callable[[GeminiProviderConfig], ClassificationProvider]
 
 
+def build_gemini_provider(
+    config: CarConfig, provider_factory: ProviderFactory = GeminiProvider
+) -> ClassificationProvider:
+    """Construct the configured adapter without contacting a provider service."""
+    return provider_factory(config.providers.gemini)
+
+
 def evaluate_analysis(
     task: TaskRequest,
     repository: RepositoryState,
@@ -26,5 +33,5 @@ def evaluate_analysis(
     behavior is added to the deterministic router.
     """
     mode = requested_mode if requested_mode != UserMode.AUTO else config.default_mode
-    provider = provider_factory(config.providers.gemini)
+    provider = build_gemini_provider(config, provider_factory)
     return mode, evaluate_routing(task, repository, mode, provider)
