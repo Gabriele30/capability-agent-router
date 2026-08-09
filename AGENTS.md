@@ -32,3 +32,8 @@ Project: CAR — Capability Agent Router
   or read/manage Codex credentials.
 - Gemini is the initial auxiliary L1 provider. Keep the router core provider-
   independent; Gemini classification is an additional signal, not sole authority.
+- L0 may execute only CAR-owned, allowlisted command templates with structured
+  arguments and `shell=False`; never execute command text from a user or agent.
+- Capture a byte-preserving snapshot before L0 writes. On execution,
+  verification, or scope failure, restore the snapshot; never use Git reset,
+  checkout, or restore as automated rollback.

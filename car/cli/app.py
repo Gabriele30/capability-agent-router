@@ -15,6 +15,9 @@ from rich.table import Table
 
 from car import __version__
 from car.config.models import CarConfig
+from car.execution.models import ExecutionResult, ExecutionStatus
+from car.l0.executor import L0Executor
+from car.l0.resolver import L0ResolutionError, resolve_l0_plan
 from car.repository.models import RepositoryState
 from car.repository.scanner import RepositoryScanError, scan_repository
 from car.router.engine import DecisionEngine
@@ -192,6 +195,35 @@ def _print_decision(request: TaskRequest, mode: UserMode, decision: RoutingDecis
         console.print(f"- {rule}")
 
 
+def _print_plan(plan) -> None:
+    console.print("\n[bold]L0 Execution Plan[/]")
+    console.print(f"Operation: {plan.operation.upper()}")
+    console.print(f"Tool: {plan.tool}")
+    console.print("Targets:")
+    for target in plan.targets:
+        console.print(f"- {target}")
+    console.print("Execute: " + " ".join(plan.commands[0].args))
+    console.print("Verify: " + " ".join(plan.verification_commands[0].args))
+    console.print("Safety: SAFE")
+
+
+def _print_execution(result: ExecutionResult) -> None:
+    console.print("\n[bold]Execution[/]")
+    if result.status == ExecutionStatus.SUCCEEDED:
+        console.print("OK " + " ".join(result.plan.commands[0].args))
+        console.print("\n[bold]Verification[/]")
+        console.print("OK " + " ".join(result.plan.verification_commands[0].args))
+        console.print("\n[bold]Changes[/]")
+        console.print(f"Files changed: {len(result.changes)}")
+        console.print("\n[bold green]Result: L0 VERIFIED SUCCESS[/]")
+    else:
+        console.print(f"FAIL {result.message}")
+        if result.rollback_attempted:
+            console.print("\n[bold]Rollback[/]")
+            console.print("OK" if result.rollback_succeeded else "FAIL")
+        console.print("\n[bold red]Result: L0 FAILED - WORKSPACE RESTORED[/]")
+
+
 @app.command()
 def analyze(
     description: Annotated[str, typer.Argument(help="Task to analyze without execution.")],
@@ -199,29 +231,81 @@ def analyze(
     as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
 ) -> None:
     """Analyze a task and display a deterministic route without executing an agent."""
-    request, _, decision = _routing_inputs(description, mode)
+    request, repository, decision = _routing_inputs(description, mode)
     if as_json:
         console.print(decision.model_dump_json(indent=2))
         return
     _title()
     _print_decision(request, mode, decision)
+    if decision.route.value == "l0":
+        try:
+            _, config_path, _ = _context_paths(repository.root)
+            config = _load_config(config_path) if config_path.exists() else CarConfig()
+            plan = resolve_l0_plan(request, repository, config.l0)
+            console.print(f"\nPotential L0 operation: {plan.operation}")
+            console.print("Candidate target: " + plan.targets[0])
+        except L0ResolutionError as error:
+            console.print(f"\nL0 execution unavailable: {error}")
     console.print("\n[bold]Execution[/]")
-    console.print("Analysis only. No agent executed.")
+    console.print("Analysis only. Nothing executed.")
 
 
 @app.command()
 def task(
     description: Annotated[str, typer.Argument(help="Task to acquire for future routing.")],
     mode: Annotated[UserMode, typer.Option(help="Routing mode.")] = UserMode.AUTO,
+    dry_run: Annotated[bool, typer.Option(help="Build an L0 plan without executing it.")] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
 ) -> None:
     """Acquire a task, decide its route, and stop before provider execution."""
     request, repository, decision = _routing_inputs(description, mode)
+    if decision.route.value != "l0":
+        if as_json:
+            console.print(
+                json.dumps({"decision": decision.model_dump(mode="json"), "execution": None})
+            )
+            return
+        _title()
+        _print_decision(request, mode, decision)
+        console.print("\n[yellow]Execution not implemented for this route.[/]")
+        return
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    try:
+        plan = resolve_l0_plan(request, repository, config.l0)
+    except L0ResolutionError as error:
+        if as_json:
+            console.print(
+                json.dumps({"decision": decision.model_dump(mode="json"), "error": str(error)})
+            )
+        else:
+            _title()
+            _print_decision(request, mode, decision)
+            label = (
+                "L0 TOOL UNAVAILABLE"
+                if "ruff is not available" in str(error)
+                else "L0 EXECUTION UNAVAILABLE"
+            )
+            console.print(f"\n[red]Result: {label} - {error}[/]")
+        raise typer.Exit(code=1) from error
+    if dry_run:
+        if as_json:
+            console.print(plan.model_dump_json(indent=2))
+            return
+        _title()
+        _print_plan(plan)
+        console.print("\nDry run: Nothing executed.")
+        return
+    result = L0Executor().execute(plan)
+    if as_json:
+        console.print(result.model_dump_json(indent=2))
+        raise typer.Exit(code=0 if result.status == ExecutionStatus.SUCCEEDED else 1)
     _title()
     _print_decision(request, mode, decision)
-    console.print("\n[bold]Repository[/]")
-    console.print(repository.name)
-    console.print("\n[yellow]Execution not implemented yet.[/]")
-    console.print("[bold green]Task accepted successfully.[/]")
+    _print_plan(plan)
+    _print_execution(result)
+    if result.status != ExecutionStatus.SUCCEEDED:
+        raise typer.Exit(code=1)
 
 
 def main() -> None:

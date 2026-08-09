@@ -55,7 +55,7 @@ ruff format --check .
 pytest
 ```
 
-## Deterministic routing (Milestone 2)
+## Deterministic routing and L0 execution
 
 Routing is currently deterministic and explanatory; no agents are executed.
 
@@ -71,11 +71,26 @@ The router recognizes explicit modes (`auto`, `gemini`, `gemini_to_codex`,
 set of high-risk domains. Its confidence is a rule-based heuristic, not a model
 probability. Gemini and Codex routes are decisions only in this milestone.
 
+CAR can now execute small, verified L0 capabilities: formatting and explicit
+Ruff lint-fix requests for an explicit Python file with an already-installed
+Ruff binary. It builds a structured plan,
+validates an allowlisted command template, snapshots the workspace, executes,
+and verifies formatting. Failed execution, verification, or scope checks trigger
+byte-preserving rollback rather than Git restoration.
+
+```bash
+car analyze "Format car/router/engine.py"
+car task "Format car/router/engine.py" --dry-run
+car task "Format car/router/engine.py"
+```
+
+L0 never executes command text supplied by the user and does not install tools.
+Gemini and Codex execution remain unimplemented.
+
 ## Project status
 
-Milestone 2 adds the deterministic routing core on top of the CLI foundation
-and repository intelligence. It does not call auxiliary agents, Codex, or any
-LLM.
+Milestone 3 adds verified deterministic L0 formatting and rollback on top of
+the routing core. It does not call auxiliary agents, Codex, or any LLM.
 
 ## Short roadmap
 

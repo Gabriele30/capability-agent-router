@@ -22,6 +22,8 @@ def _is_l0_candidate(text: str) -> bool:
         or "formatting only" in text
         or "lint --fix" in text
         or "run lint fix" in text
+        or bool(re.search(r"\brun\s+ruff\s+lint\s+fix\b", text))
+        or bool(re.search(r"\bfix\s+ruff\s+violations\s+in\s+[\w./\\-]+", text))
         or "ruff format" in text
     )
 

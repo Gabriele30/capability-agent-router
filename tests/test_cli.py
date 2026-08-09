@@ -10,7 +10,7 @@ runner = CliRunner()
 def test_version() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "version 0.2.0" in result.stdout
+    assert "version 0.3.0" in result.stdout
 
 
 def test_init_is_idempotent(git_repository: Path, monkeypatch) -> None:
@@ -52,3 +52,26 @@ def test_empty_task_is_rejected(git_repository: Path, monkeypatch) -> None:
 
     assert result.exit_code == 2
     assert "Invalid task" in result.stdout
+
+
+def test_analyze_is_read_only(git_repository: Path, monkeypatch) -> None:
+    target = git_repository / "sample.py"
+    original = b"x=1\n"
+    target.write_bytes(original)
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["analyze", "Format sample.py"])
+
+    assert result.exit_code == 0
+    assert target.read_bytes() == original
+
+
+def test_l0_dry_run_does_not_execute(git_repository: Path, monkeypatch) -> None:
+    target = git_repository / "sample.py"
+    original = b"x=1\n"
+    target.write_bytes(original)
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["task", "Format sample.py", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Dry run" in result.stdout
+    assert target.read_bytes() == original

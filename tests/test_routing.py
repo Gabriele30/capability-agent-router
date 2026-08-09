@@ -89,6 +89,6 @@ def test_v1_configuration_migrates_in_memory() -> None:
     config = CarConfig.model_validate(
         {"schema_version": 1, "default_mode": "code".replace("code", "codex")}
     )
-    assert config.schema_version == 2
+    assert config.schema_version == 3
     assert config.default_mode == UserMode.CODEX
     assert config.routing_policy.max_gemini_risk == 0.35

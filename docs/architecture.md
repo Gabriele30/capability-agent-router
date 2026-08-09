@@ -19,6 +19,28 @@ Verification
 Result / Escalation
 ```
 
+For an executable L0 decision, the current flow is:
+
+```text
+Task
+ ↓
+Router
+ ↓
+Decision (L0)
+ ↓
+Execution Plan
+ ↓
+Safety
+ ↓
+Snapshot
+ ↓
+Execute
+ ↓
+Verify
+ ├── PASS → DONE
+ └── FAIL → ROLLBACK
+```
+
 ## Implemented now
 
 Milestone 2 implements the CLI boundary, Pydantic domain models, local CAR
@@ -28,9 +50,15 @@ a route but deliberately do not execute it. The decision includes rules and
 reasons for explainability; confidence is heuristic rather than a model
 probability.
 
+Milestone 3 adds reusable `ExecutionPlan`, `CommandRunner`,
+`VerificationEngine`, and `WorkspaceSnapshot` infrastructure. Only internally
+constructed, allowlisted Ruff format/lint-fix commands for explicit Python
+files may execute. Commands use structured arguments and no shell. Snapshot
+rollback preserves pre-existing file bytes and never uses Git reset/restore.
+
 ## Planned
 
-Future milestones may add L0 execution, auxiliary-agent and Codex integrations,
+Future milestones may add more L0 tools, auxiliary-agent and Codex integrations,
 verification, and escalation. Gemini is the initial auxiliary L1 provider, but
 its classification will be an additional signal rather than the sole routing
 authority. The router core remains provider-independent.
