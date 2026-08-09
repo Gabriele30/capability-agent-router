@@ -1,31 +1,6 @@
-"""Minimal provider-neutral contracts for future execution milestones."""
+"""Compatibility re-exports; provider contracts now live in :mod:`car.providers`."""
 
-from typing import Protocol
+from car.providers.base import ClassificationProvider as AgentProvider
+from car.providers.models import ProviderCapabilities, ProviderHealth
 
-from pydantic import BaseModel, Field
-
-
-class ProviderCapabilities(BaseModel):
-    supports_planning: bool = False
-    supports_code_changes: bool = False
-
-
-class ProviderHealth(BaseModel):
-    available: bool
-    detail: str | None = None
-
-
-class AgentRequest(BaseModel):
-    task: str = Field(min_length=1)
-
-
-class AgentResponse(BaseModel):
-    summary: str
-
-
-class AgentProvider(Protocol):
-    """Future providers must satisfy this contract without entering router core."""
-
-    def capabilities(self) -> ProviderCapabilities: ...
-
-    def health(self) -> ProviderHealth: ...
+__all__ = ["AgentProvider", "ProviderCapabilities", "ProviderHealth"]

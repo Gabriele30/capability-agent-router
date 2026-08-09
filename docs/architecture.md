@@ -58,6 +58,14 @@ rollback preserves pre-existing file bytes and never uses Git reset/restore.
 
 ## Planned
 
+The provider foundation defines provider-neutral classification contracts and a
+local-only Gemini configuration health check. Live Gemini classification is not
+implemented yet; no provider requests or repository source uploads occur.
+
+Technical debt: L0 currently snapshots a broad workspace scope. This is safe
+for the single-execution MVP but may be expensive for large repositories. Before
+L1 patch execution, evaluate target-scoped snapshots and efficient change detection.
+
 Future milestones may add more L0 tools, auxiliary-agent and Codex integrations,
 verification, and escalation. Gemini is the initial auxiliary L1 provider, but
 its classification will be an additional signal rather than the sole routing
