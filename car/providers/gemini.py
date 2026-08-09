@@ -30,7 +30,9 @@ HTTP_ERROR_KINDS = {
 }
 SAFE_MESSAGES = {
     ProviderErrorKind.AUTHENTICATION_ERROR: "Gemini credentials were rejected.",
-    ProviderErrorKind.PERMISSION_DENIED: "Gemini credentials do not have permission for this request.",
+    ProviderErrorKind.PERMISSION_DENIED: (
+        "Gemini credentials do not have permission for this request."
+    ),
     ProviderErrorKind.INVALID_REQUEST: "Gemini rejected the request.",
     ProviderErrorKind.MODEL_NOT_FOUND: "Configured Gemini model was not found.",
     ProviderErrorKind.TIMEOUT: "Gemini request timed out.",
