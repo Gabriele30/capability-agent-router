@@ -57,7 +57,12 @@ pytest
 
 ## Deterministic routing and L0 execution
 
-Routing is currently deterministic and explanatory; no agents are executed.
+`car analyze` now composes deterministic routing with an optional Gemini
+classification consultation when Gemini is explicitly configured. Gemini is
+classification-only: it never edits the workspace, runs commands, or replaces
+hard routing rules. A provider result may conservatively escalate an automatic
+route, while `car task` retains its existing execution behavior and Codex
+execution is not wired yet.
 
 ```bash
 car analyze "Fix CSS spacing"

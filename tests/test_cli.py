@@ -65,6 +65,24 @@ def test_analyze_is_read_only(git_repository: Path, monkeypatch) -> None:
     assert target.read_bytes() == original
 
 
+def test_analyze_json_reports_evaluation_without_secrets(git_repository: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["analyze", "Format README.md", "--json"])
+
+    assert result.exit_code == 0
+    assert '"deterministic_decision"' in result.stdout
+    assert '"skip_reason": "deterministic_l0"' in result.stdout
+    assert "GEMINI_API_KEY" not in result.stdout
+
+
+def test_analyze_accepts_hyphenated_gemini_to_codex_mode(git_repository: Path, monkeypatch) -> None:
+    monkeypatch.chdir(git_repository)
+    result = runner.invoke(app, ["analyze", "Fix CSS spacing", "--mode", "gemini-to-codex"])
+
+    assert result.exit_code == 0
+    assert "Route:      GEMINI_TO_CODEX" in result.stdout
+
+
 def test_l0_dry_run_does_not_execute(git_repository: Path, monkeypatch) -> None:
     target = git_repository / "sample.py"
     original = b"x=1\n"

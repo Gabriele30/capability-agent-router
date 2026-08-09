@@ -65,6 +65,13 @@ do not alter an implementation route; L0, hard rules, and explicit user modes
 skip consultation. The final reported risk is `max(deterministic, provider)` when
 provider evidence succeeds, but risk alone never changes the route.
 
+Milestone 4D1 wires that evaluation into `car analyze` through a small
+application composition layer. It reads the local CAR configuration, constructs
+the Gemini adapter, and injects it into the provider-neutral consultation gate.
+The normal CLI remains safe when Gemini is disabled, incomplete, or unavailable;
+L0, hard rules, and explicit modes do not call the provider. `car analyze` is
+read-only with respect to the workspace, and Gemini remains classification-only.
+
 ## Planned
 
 The provider foundation defines provider-neutral classification contracts and a

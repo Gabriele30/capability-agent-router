@@ -6,7 +6,11 @@ from pydantic import BaseModel
 
 from car.providers.base import ClassificationProvider
 from car.providers.context import build_classification_context
-from car.providers.models import ProviderClassification, ProviderStatus
+from car.providers.models import (
+    ProviderClassification,
+    ProviderErrorKind,
+    ProviderStatus,
+)
 from car.repository.models import RepositoryState
 from car.router.analysis import analyze_task
 from car.router.engine import DecisionEngine, assess_risk
@@ -97,7 +101,7 @@ def evaluate_routing(
             )
         except RuntimeError as error:
             consultation = ProviderConsultationResult(
-                attempted=True, succeeded=False, error_kind=str(error)
+                attempted=True, succeeded=False, error_kind=_safe_error_kind(str(error))
             )
     from car.router.fusion import fuse_routing_decision
 
@@ -120,3 +124,12 @@ def evaluate_routing(
         fusion_reasons=[reason.value for reason in outcome.reasons],
         decision_sources=sources,
     )
+
+
+def _safe_error_kind(value: str) -> str:
+    """Expose only known provider taxonomy values, never raw exception text."""
+    if value in {kind.value for kind in ProviderErrorKind}:
+        return value
+    if value in {status.value for status in ProviderStatus}:
+        return value
+    return ProviderErrorKind.UNKNOWN_ERROR.value

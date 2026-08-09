@@ -39,6 +39,10 @@ Project: CAR — Capability Agent Router
   it must never downgrade L0, hard-rule, or explicit user decisions.
 - Provider confidence is a routing heuristic, not a calibrated probability.
 - Provider risk is reported conservatively but must not independently change a route.
+- Construct concrete providers only in application or CLI composition layers;
+  never inside the deterministic router, fusion engine, or consultation gate.
+- `car analyze` may consult a configured classifier but must remain read-only
+  with respect to the repository. `car task` wiring changes require an explicit milestone.
 - Live provider tests must remain explicit opt-in and never run in standard CI.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.

@@ -14,12 +14,14 @@ from rich.console import Console
 from rich.table import Table
 
 from car import __version__
+from car.application.routing import evaluate_analysis
 from car.config.models import CarConfig
 from car.execution.models import ExecutionResult, ExecutionStatus
 from car.l0.executor import L0Executor
 from car.l0.resolver import L0ResolutionError, resolve_l0_plan
 from car.repository.models import RepositoryState
 from car.repository.scanner import RepositoryScanError, scan_repository
+from car.router.consultation import RoutingEvaluation
 from car.router.engine import DecisionEngine
 from car.router.models import RoutingDecision, TaskRequest, UserMode
 
@@ -173,6 +175,14 @@ def _routing_inputs(
     return request, repository, decision
 
 
+def _parse_analyze_mode(value: str) -> UserMode:
+    try:
+        return UserMode(value.replace("-", "_"))
+    except ValueError as error:
+        valid = ", ".join(item.value.replace("_", "-") for item in UserMode)
+        raise typer.BadParameter(f"Mode must be one of: {valid}.") from error
+
+
 def _print_decision(request: TaskRequest, mode: UserMode, decision: RoutingDecision) -> None:
     console.print("[bold]Task[/]")
     console.print(request.description)
@@ -193,6 +203,46 @@ def _print_decision(request: TaskRequest, mode: UserMode, decision: RoutingDecis
     console.print("\n[bold]Matched rules[/]")
     for rule in decision.matched_rules:
         console.print(f"- {rule}")
+
+
+def _print_evaluation(request: TaskRequest, evaluation: RoutingEvaluation) -> None:
+    decision = evaluation.deterministic_decision
+    console.print("[bold]Task[/]")
+    console.print(request.description)
+    console.print("\n[bold]Deterministic[/]")
+    console.print(f"Route:      {decision.route.value.upper()}")
+    console.print(f"Risk:       {decision.risk.score:.2f} / {decision.risk.level.value.upper()}")
+    console.print(f"Complexity: {decision.complexity.value.upper()}")
+    console.print("Categories: " + ", ".join(category.value for category in decision.categories))
+    console.print("Matched rules: " + ", ".join(decision.matched_rules))
+    console.print("\n[bold]Provider[/]")
+    consultation = evaluation.provider_consultation
+    console.print(f"Consulted:  {'yes' if consultation.attempted else 'no'}")
+    if consultation.succeeded and consultation.classification:
+        classification = consultation.classification
+        console.print("Status:     SUCCESS")
+        console.print(f"Suggested:  {classification.suggested_route.value.upper()}")
+        console.print(f"Risk:       {classification.risk:.2f}")
+        console.print(f"Confidence: {classification.confidence:.2f}")
+    elif consultation.attempted:
+        console.print("Status:     FAILED")
+        console.print(f"Error:      {(consultation.error_kind or 'unknown_error').upper()}")
+    else:
+        console.print("Status:     SKIPPED")
+        skip_reason = consultation.skip_reason
+        reason = skip_reason.value.upper() if skip_reason else "PROVIDER_UNAVAILABLE"
+        console.print(f"Reason:     {reason}")
+    console.print("\n[bold]Fusion[/]")
+    console.print(
+        "Reason:     " + ", ".join(reason.replace("_", " ") for reason in evaluation.fusion_reasons)
+    )
+    console.print(f"Influenced: {'yes' if evaluation.provider_influenced_decision else 'no'}")
+    console.print(
+        "Sources:    " + ", ".join(source.value.upper() for source in evaluation.decision_sources)
+    )
+    console.print("\n[bold]Final[/]")
+    console.print(f"Route:      {evaluation.final_decision.route.value.upper()}")
+    console.print(f"Risk:       {evaluation.final_risk:.2f}")
 
 
 def _print_plan(plan) -> None:
@@ -227,20 +277,27 @@ def _print_execution(result: ExecutionResult) -> None:
 @app.command()
 def analyze(
     description: Annotated[str, typer.Argument(help="Task to analyze without execution.")],
-    mode: Annotated[UserMode, typer.Option(help="Routing mode.")] = UserMode.AUTO,
+    mode: Annotated[str, typer.Option(help="Routing mode.")] = UserMode.AUTO.value,
     as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
 ) -> None:
-    """Analyze a task and display a deterministic route without executing an agent."""
-    request, repository, decision = _routing_inputs(description, mode)
+    """Analyze a task without executing workspace operations or coding agents."""
+    selected_mode = _parse_analyze_mode(mode)
+    try:
+        request = TaskRequest(description=description)
+    except ValidationError as error:
+        console.print(f"[red]Error:[/] Invalid task: {error.errors()[0]['msg']}")
+        raise typer.Exit(code=2) from error
+    repository = _scan_or_exit()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    _, evaluation = evaluate_analysis(request, repository, selected_mode, config)
     if as_json:
-        console.print(decision.model_dump_json(indent=2))
+        console.print(evaluation.model_dump_json(indent=2))
         return
     _title()
-    _print_decision(request, mode, decision)
-    if decision.route.value == "l0":
+    _print_evaluation(request, evaluation)
+    if evaluation.final_decision.route.value == "l0":
         try:
-            _, config_path, _ = _context_paths(repository.root)
-            config = _load_config(config_path) if config_path.exists() else CarConfig()
             plan = resolve_l0_plan(request, repository, config.l0)
             console.print(f"\nPotential L0 operation: {plan.operation}")
             console.print("Candidate target: " + plan.targets[0])
