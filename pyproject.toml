@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "capability-agent-router"
+version = "0.1.0"
+description = "Capability-aware orchestration for software engineering agents."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Capability Agent Router contributors" }]
+dependencies = ["pydantic>=2.7,<3", "rich>=13.7,<15", "typer>=0.12,<1"]
+
+[project.scripts]
+car = "car.cli.app:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2,<9", "ruff>=0.5,<1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["car"]
