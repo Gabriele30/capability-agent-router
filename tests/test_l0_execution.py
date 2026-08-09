@@ -110,7 +110,7 @@ def test_symlink_outside_repository_is_blocked(git_repository: Path, tmp_path: P
 def test_missing_ruff_never_modifies_file(git_repository: Path) -> None:
     target = git_repository / "sample.py"
     target.write_bytes(b"original\n")
-    with pytest.raises(L0ResolutionError, match="ruff is not available"):
+    with pytest.raises(L0ResolutionError, match="ruff or black is not available"):
         resolve_l0_plan(
             TaskRequest(description="Format sample.py"),
             scan_repository(git_repository),
