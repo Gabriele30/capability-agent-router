@@ -37,6 +37,10 @@ class Interactions:
 class Client:
     def __init__(self, response):
         self.interactions = Interactions(response)
+        self.close_count = 0
+
+    def close(self):
+        self.close_count += 1
 
 
 def context(task="Fix CSS spacing"):
@@ -148,3 +152,4 @@ def test_retry_service_error_then_success():
     )
     assert instance.classify(context()).risk == 0.1
     assert len(client.interactions.calls) == 2 and delays == [0.25]
+    assert client.close_count == 1

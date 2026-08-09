@@ -125,22 +125,28 @@ class GeminiProvider:
             raise RuntimeError(health.status.value)
         api_key = self._environment[self.config.api_key_env]
         prompt = self._build_prompt(context)
-        for attempt in range(1, self.config.max_attempts + 1):
-            try:
-                return self._classify_once(api_key, prompt)
-            except RuntimeError as error:
-                kind = ProviderErrorKind(error.args[0])
-                if not is_retryable(kind) or attempt == self.config.max_attempts:
-                    raise
-                self._sleep(min(0.25 * (2 ** (attempt - 1)), 2.0))
-
-    def _classify_once(self, api_key: str, prompt: str) -> ProviderClassification:
+        client = (
+            self._client_factory(api_key) if self._client_factory else self._create_client(api_key)
+        )
         try:
-            client = (
-                self._client_factory(api_key)
-                if self._client_factory
-                else self._create_client(api_key)
-            )
+            for attempt in range(1, self.config.max_attempts + 1):
+                try:
+                    return self._classify_once(client, prompt)
+                except RuntimeError as error:
+                    kind = ProviderErrorKind(error.args[0])
+                    if not is_retryable(kind) or attempt == self.config.max_attempts:
+                        raise
+                    self._sleep(min(0.25 * (2 ** (attempt - 1)), 2.0))
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
+    def _classify_once(self, client: object, prompt: str) -> ProviderClassification:
+        try:
             response = client.interactions.create(
                 model=self.config.model,
                 input=prompt,
