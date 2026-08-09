@@ -22,6 +22,10 @@ class ProviderStatus(StrEnum):
 
 
 class ProviderErrorKind(StrEnum):
+    AUTHENTICATION_ERROR = "authentication_error"
+    PERMISSION_DENIED = "permission_denied"
+    INVALID_REQUEST = "invalid_request"
+    MODEL_NOT_FOUND = "model_not_found"
     TIMEOUT = "timeout"
     RATE_LIMITED = "rate_limited"
     QUOTA_EXHAUSTED = "quota_exhausted"

@@ -12,8 +12,64 @@ from car.providers.models import (
     ProviderCapabilities,
     ProviderClassification,
     ProviderHealth,
+    ProviderError,
+    ProviderErrorKind,
     ProviderStatus,
 )
+
+HTTP_ERROR_KINDS = {
+    400: ProviderErrorKind.INVALID_REQUEST,
+    401: ProviderErrorKind.AUTHENTICATION_ERROR,
+    403: ProviderErrorKind.PERMISSION_DENIED,
+    404: ProviderErrorKind.MODEL_NOT_FOUND,
+    408: ProviderErrorKind.TIMEOUT,
+    500: ProviderErrorKind.SERVICE_ERROR,
+    502: ProviderErrorKind.SERVICE_ERROR,
+    503: ProviderErrorKind.SERVICE_ERROR,
+    504: ProviderErrorKind.SERVICE_ERROR,
+}
+SAFE_MESSAGES = {
+    ProviderErrorKind.AUTHENTICATION_ERROR: "Gemini credentials were rejected.",
+    ProviderErrorKind.PERMISSION_DENIED: "Gemini credentials do not have permission for this request.",
+    ProviderErrorKind.INVALID_REQUEST: "Gemini rejected the request.",
+    ProviderErrorKind.MODEL_NOT_FOUND: "Configured Gemini model was not found.",
+    ProviderErrorKind.TIMEOUT: "Gemini request timed out.",
+    ProviderErrorKind.RATE_LIMITED: "Gemini provider rate limited the request.",
+    ProviderErrorKind.QUOTA_EXHAUSTED: "Gemini quota is exhausted.",
+    ProviderErrorKind.SERVICE_ERROR: "Gemini service is temporarily unavailable.",
+    ProviderErrorKind.INVALID_RESPONSE: "Gemini returned an invalid classification.",
+    ProviderErrorKind.UNKNOWN_ERROR: "Gemini request failed.",
+}
+
+
+def _map_gemini_error(error: object) -> ProviderError:
+    code = getattr(error, "code", None)
+    message = str(getattr(error, "message", "")).lower()
+    if code == 429:
+        kind = (
+            ProviderErrorKind.QUOTA_EXHAUSTED
+            if any(
+                item in message
+                for item in (
+                    "quota exhausted",
+                    "daily quota",
+                    "billing quota",
+                    "quota limit reached",
+                )
+            )
+            else ProviderErrorKind.RATE_LIMITED
+        )
+    else:
+        kind = HTTP_ERROR_KINDS.get(code, ProviderErrorKind.UNKNOWN_ERROR)
+    return ProviderError(kind=kind, message=SAFE_MESSAGES[kind])
+
+
+def is_retryable(kind: ProviderErrorKind) -> bool:
+    return kind in {
+        ProviderErrorKind.TIMEOUT,
+        ProviderErrorKind.RATE_LIMITED,
+        ProviderErrorKind.SERVICE_ERROR,
+    }
 
 
 class GeminiProviderConfig(BaseModel):
@@ -91,7 +147,7 @@ class GeminiProvider:
         except (ValidationError, ValueError, json.JSONDecodeError) as error:
             raise RuntimeError(ProviderStatus.INVALID_RESPONSE.value) from error
         except Exception as error:
-            raise RuntimeError(ProviderStatus.SERVICE_ERROR.value) from error
+            raise RuntimeError(_map_gemini_error(error).kind.value) from error
 
     @staticmethod
     def _create_client(api_key: str) -> object:
