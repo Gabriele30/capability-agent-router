@@ -4,13 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capability-agent-router"
-version = "0.3.0"
+version = "0.4.0"
 description = "Capability-aware orchestration for software engineering agents."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Capability Agent Router contributors" }]
 dependencies = ["google-genai>=1,<2", "pydantic>=2.7,<3", "rich>=13.7,<15", "typer>=0.12,<1"]
+
+[project.urls]
+Repository = "https://github.com/Gabriele30/capability-agent-router"
+Documentation = "https://github.com/Gabriele30/capability-agent-router#readme"
+Issues = "https://github.com/Gabriele30/capability-agent-router/issues"
 
 [project.scripts]
 car = "car.cli.app:main"

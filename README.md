@@ -1,112 +1,130 @@
 # CAR — Capability Agent Router
 
-Capability-aware orchestration for software engineering agents.
-
-CAR is an early-stage tool for choosing an appropriate capability layer for a
-software-engineering task:
+Route software-engineering tasks to the least expensive capability that can
+solve them safely.
 
 ```text
-L0 → deterministic tools
-L1 → auxiliary agents
-L2 → frontier agent
+Deterministic tools → Gemini → Codex
 ```
 
-Its guiding principle is: **use the least capable layer that can reliably
-complete the task, without sacrificing correctness.** CAR complements Codex;
-it does not replace it.
+CAR is an orchestration and routing layer for software-engineering capabilities,
+not another coding model, chat wrapper, or language-only router. It considers
+task type, complexity, scope, risk, deterministic evidence, and optional
+provider evidence before selecting a route.
 
-## Requirements
+## Project status: Alpha
 
-- Python 3.12 or newer
-- Git (for repository-aware commands)
+CAR is under active development. The routing-intelligence layer is usable, while
+L1/L2 coding execution is still being implemented.
 
-## Installation
+## Routing architecture
 
-```bash
+```text
+Task
+ │
+ ▼
+Deterministic Analysis
+ ├── L0 authoritative
+ ├── Hard risk → Codex authoritative
+ ▼
+Lazy Provider Consultation
+ ▼
+Gemini Classification
+ ▼
+Conservative Fusion
+ ▼
+Final Route: L0 | Gemini | Gemini → Codex | Codex | Plan
+```
+
+Provider evidence may escalate an eligible automatic route, but cannot downgrade
+it. Gemini, Gemini-to-Codex, and Codex routes are ordered conservatively.
+
+## Quick start
+
+```powershell
+git clone https://github.com/Gabriele30/capability-agent-router.git
+cd capability-agent-router
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-car --help
-```
 
-## Commands
-
-Initialize CAR's local state in a Git repository:
-
-```bash
 car init
-```
-
-Inspect repository intelligence:
-
-```bash
 car status
+car analyze "Fix parser regression"
+car providers
 ```
 
-Acquire a task (routing is intentionally not implemented yet):
+## Examples
 
-```bash
-car task "Fix Docker healthcheck"
+```powershell
+# Deterministic L0 candidate; Gemini is not consulted.
+car analyze "Format car/router/engine.py"
+
+# Hard risk; Codex is selected without provider consultation.
+car analyze "Fix authentication bypass"
+
+# Provider consultation is optional and fusion remains conservative.
+car analyze "Fix parser regression"
+
+# Only a final L0 route may currently execute.
+car task "Format car/router/engine.py"
 ```
+
+`car analyze` is read-only with respect to the repository, even when Gemini is
+configured for classification.
+
+## Gemini configuration
+
+Gemini classification is disabled by default. To opt in, set
+`providers.gemini.enabled` to `true`, configure `providers.gemini.model` in
+`.car-context/config.json`, and make its configured credential environment
+variable available:
+
+```powershell
+$env:GEMINI_API_KEY="<your-key>"
+```
+
+CAR never persists the API key value. `car providers` reports local-only status:
+it does not send a Gemini request or invoke a Codex process.
+
+## Execution capabilities
+
+| Capability | Status |
+| --- | --- |
+| L0 deterministic execution | Implemented and verified |
+| Gemini classification | Implemented, optional |
+| Gemini coding execution | Not implemented |
+| Codex routing | Implemented |
+| Codex coding execution | Not implemented |
+| Gemini → Codex coding handoff | Not implemented |
+
+Codex is currently a routing target, not an executable CAR provider. Future
+Codex execution will use the locally installed Codex runtime authenticated by the
+user's existing Codex/ChatGPT session; CAR will not require an OpenAI API key.
+
+## Safety
+
+CAR uses structured routing and provider evidence, preserves user changes during
+L0 work, verifies deterministic changes, and rolls back failed L0 operations.
+It does not use `git reset --hard` for recovery. Provider failures degrade to the
+deterministic route, and Gemini credentials stay environment-only.
 
 ## Development
 
-```bash
+```powershell
 ruff check .
 ruff format --check .
 pytest
 ```
 
-## Deterministic routing and L0 execution
+Standard tests are offline-first. Live Gemini validation is explicit opt-in and
+is not enabled in CI.
 
-`car analyze` now composes deterministic routing with an optional Gemini
-classification consultation when Gemini is explicitly configured. Gemini is
-classification-only: it never edits the workspace, runs commands, or replaces
-hard routing rules. A provider result may conservatively escalate an automatic
-route, while `car task` retains its existing execution behavior and Codex
-execution is not wired yet.
+## Roadmap
 
-`car task` uses that same routing evaluation. Only a final L0 route can execute
-the existing verified deterministic capability; Gemini, Gemini-to-Codex, Codex,
-and PLAN routes currently report their execution as unavailable.
-
-```bash
-car analyze "Fix CSS spacing"
-car analyze "Fix authentication bypass"
-car analyze "Format src/app.py"
-car analyze "Fix parser regression" --json
-```
-
-The router recognizes explicit modes (`auto`, `gemini`, `gemini_to_codex`,
-`codex`, and `plan`), clearly deterministic formatter/lint tasks, and a small
-set of high-risk domains. Its confidence is a rule-based heuristic, not a model
-probability. Gemini and Codex routes are decisions only in this milestone.
-
-CAR can now execute small, verified L0 capabilities: formatting and explicit
-Ruff lint-fix requests for an explicit Python file with an already-installed
-Ruff binary. It builds a structured plan,
-validates an allowlisted command template, snapshots the workspace, executes,
-and verifies formatting. Failed execution, verification, or scope checks trigger
-byte-preserving rollback rather than Git restoration.
-
-```bash
-car analyze "Format car/router/engine.py"
-car task "Format car/router/engine.py" --dry-run
-car task "Format car/router/engine.py"
-car providers
-```
-
-L0 never executes command text supplied by the user and does not install tools.
-Implemented: deterministic routing, verified L0 execution, Gemini
-classification, lazy consultation, conservative fusion, and unified
-`analyze`/`task` routing. Gemini coding execution and Codex coding execution
-remain unimplemented.
-
-## Project status
-
-Milestone 3 adds verified deterministic L0 formatting and rollback on top of
-the routing core. It does not call auxiliary agents, Codex, or any LLM.
-
-## Short roadmap
-
-1. Foundation and repository intelligence (current)
-2. Routing policy and provider interfaces
-3. Verification and controlled execution
+- Current: 0.4 — routing intelligence.
+- Next: L1 Gemini coding execution, verification-driven escalation, Codex
+  handoff, and Codex runtime integration.
+- Later: repository memory, deeper retrieval, VS Code integration, telemetry,
+  adaptive routing, and verifiability-aware routing.

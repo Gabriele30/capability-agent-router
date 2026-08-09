@@ -78,6 +78,13 @@ other routes report that coding execution is not implemented. `car providers`
 reports local-only Gemini configuration health and the planned external Codex
 runtime boundary; it does not make network calls or invoke Codex.
 
+## Release 0.4.0 status
+
+CAR 0.4.0 is an alpha Routing Intelligence release. It implements deterministic
+routing, verified L0 execution, optional Gemini classification, lazy consultation,
+and conservative fusion. Gemini/Codex coding execution and Gemini-to-Codex
+handoff remain planned; the current provider integration is classification-only.
+
 ## Planned
 
 The provider foundation defines provider-neutral classification contracts and a

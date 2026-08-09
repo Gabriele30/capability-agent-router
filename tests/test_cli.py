@@ -71,7 +71,7 @@ def _patch_cli_provider(monkeypatch, provider: _FakeProvider) -> None:
 def test_version() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "version 0.3.0" in result.stdout
+    assert "version 0.4.0" in result.stdout
 
 
 def test_init_is_idempotent(git_repository: Path, monkeypatch) -> None:
