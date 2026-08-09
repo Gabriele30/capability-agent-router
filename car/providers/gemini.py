@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import time
 from collections.abc import Callable
 
 from pydantic import BaseModel, Field, ValidationError
@@ -90,10 +91,12 @@ class GeminiProvider:
         config: GeminiProviderConfig,
         environment: dict[str, str] | None = None,
         client_factory: Callable[[str], object] | None = None,
+        sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
         self.config = config
         self._environment = environment if environment is not None else os.environ
         self._client_factory = client_factory
+        self._sleep = sleep_fn
 
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(supports_classification=True)
@@ -122,6 +125,16 @@ class GeminiProvider:
             raise RuntimeError(health.status.value)
         api_key = self._environment[self.config.api_key_env]
         prompt = self._build_prompt(context)
+        for attempt in range(1, self.config.max_attempts + 1):
+            try:
+                return self._classify_once(api_key, prompt)
+            except RuntimeError as error:
+                kind = ProviderErrorKind(error.args[0])
+                if not is_retryable(kind) or attempt == self.config.max_attempts:
+                    raise
+                self._sleep(min(0.25 * (2 ** (attempt - 1)), 2.0))
+
+    def _classify_once(self, api_key: str, prompt: str) -> ProviderClassification:
         try:
             client = (
                 self._client_factory(api_key)
@@ -151,11 +164,14 @@ class GeminiProvider:
         except Exception as error:
             raise RuntimeError(_map_gemini_error(error).kind.value) from error
 
-    @staticmethod
-    def _create_client(api_key: str) -> object:
+    def _create_client(self, api_key: str) -> object:
         from google import genai
+        from google.genai import types
 
-        return genai.Client(api_key=api_key)
+        return genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=self.config.timeout_seconds * 1000),
+        )
 
     @staticmethod
     def _build_prompt(context: ClassificationContext) -> str:

@@ -17,6 +17,12 @@ class Response:
         self.output_text = output_text
 
 
+class FakeError(Exception):
+    def __init__(self, code):
+        self.code = code
+        self.message = "temporary failure"
+
+
 class Interactions:
     def __init__(self, response):
         self.response, self.calls = response, []
@@ -119,3 +125,27 @@ def test_configuration_and_request_failures_make_no_or_one_call():
     with pytest.raises(RuntimeError, match="unknown_error"):
         instance.classify(context())
     assert len(client.interactions.calls) == 1
+
+
+def test_retry_service_error_then_success():
+    client = Client(Response(payload()))
+    client.interactions.response = [FakeError(503), Response(payload())]
+    original = client.interactions.create
+
+    def create(**kwargs):
+        client.interactions.calls.append(kwargs)
+        item = client.interactions.response.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    client.interactions.create = create
+    delays = []
+    instance = GeminiProvider(
+        GeminiProviderConfig(enabled=True, model="configured-model", max_attempts=2),
+        {"GEMINI_API_KEY": "x"},
+        lambda _: client,
+        delays.append,
+    )
+    assert instance.classify(context()).risk == 0.1
+    assert len(client.interactions.calls) == 2 and delays == [0.25]
