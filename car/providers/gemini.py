@@ -11,9 +11,9 @@ from car.providers.models import (
     ClassificationContext,
     ProviderCapabilities,
     ProviderClassification,
-    ProviderHealth,
     ProviderError,
     ProviderErrorKind,
+    ProviderHealth,
     ProviderStatus,
 )
 

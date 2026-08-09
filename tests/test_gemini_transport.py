@@ -116,6 +116,6 @@ def test_configuration_and_request_failures_make_no_or_one_call():
         disabled.classify(context())
     assert not client.interactions.calls
     instance, client = provider(Exception("network"))
-    with pytest.raises(RuntimeError, match="service_error"):
+    with pytest.raises(RuntimeError, match="unknown_error"):
         instance.classify(context())
     assert len(client.interactions.calls) == 1
