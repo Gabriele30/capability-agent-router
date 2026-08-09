@@ -51,8 +51,6 @@ def resolve_l0_plan(
         raise L0ResolutionError("target count exceeds configured L0 file limit")
     if target.suffix.lower() != ".py":
         raise L0ResolutionError("only explicit Python targets are supported in this milestone")
-    if find_tool("ruff", tool_lookup) is None:
-        raise L0ResolutionError("ruff is not available")
     relative_target = target.relative_to(repository.root).as_posix()
     lowered_task = task.description.lower()
     is_lint_fix = (
@@ -60,17 +58,26 @@ def resolve_l0_plan(
         and ("lint" in lowered_task or "violations" in lowered_task)
         and ("fix" in lowered_task or "violations" in lowered_task)
     )
+    if is_lint_fix and find_tool("ruff", tool_lookup) is None:
+        raise L0ResolutionError("ruff is not available for lint fixing")
+    tool = "ruff" if find_tool("ruff", tool_lookup) is not None else "black"
+    if tool == "black" and find_tool("black", tool_lookup) is None:
+        raise L0ResolutionError("ruff or black is not available")
     operation = "lint_fix" if is_lint_fix else "format"
-    command_args = (
-        ["ruff", "check", "--fix", relative_target]
-        if is_lint_fix
-        else ["ruff", "format", relative_target]
-    )
-    verification_args = (
-        ["ruff", "check", relative_target]
-        if is_lint_fix
-        else ["ruff", "format", "--check", relative_target]
-    )
+    if tool == "ruff":
+        command_args = (
+            ["ruff", "check", "--fix", relative_target]
+            if is_lint_fix
+            else ["ruff", "format", relative_target]
+        )
+        verification_args = (
+            ["ruff", "check", relative_target]
+            if is_lint_fix
+            else ["ruff", "format", "--check", relative_target]
+        )
+    else:
+        command_args = ["black", relative_target]
+        verification_args = ["black", "--check", relative_target]
     command = CommandSpec(
         args=command_args, cwd=str(repository.root), timeout_seconds=config.command_timeout_seconds
     )
@@ -81,7 +88,7 @@ def resolve_l0_plan(
     )
     return ExecutionPlan(
         operation=operation,
-        tool="ruff",
+        tool=tool,
         targets=[relative_target],
         commands=[command],
         verification_commands=[verification],

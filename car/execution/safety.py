@@ -18,6 +18,9 @@ def classify_plan(plan: ExecutionPlan) -> SafetyLevel:
         if plan.tool == "ruff":
             if executable != "ruff" or arguments[:1] not in (["format"], ["check"]):
                 return SafetyLevel.FORBIDDEN
+        elif plan.tool == "black":
+            if command.args not in (["black", *plan.targets], ["black", "--check", *plan.targets]):
+                return SafetyLevel.FORBIDDEN
         else:
             return SafetyLevel.FORBIDDEN
     return SafetyLevel.SAFE
