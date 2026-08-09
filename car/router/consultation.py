@@ -21,6 +21,14 @@ class ConsultationSkipReason(StrEnum):
     PROVIDER_UNAVAILABLE = "provider_unavailable"
 
 
+class DecisionSource(StrEnum):
+    DETERMINISTIC = "deterministic"
+    PROVIDER = "provider"
+    FUSION_POLICY = "fusion_policy"
+    HARD_RULE = "hard_rule"
+    EXPLICIT_OVERRIDE = "explicit_override"
+
+
 class ProviderConsultationResult(BaseModel):
     attempted: bool
     succeeded: bool
@@ -33,6 +41,12 @@ class RoutingEvaluation(BaseModel):
     deterministic_decision: RoutingDecision
     provider_consultation: ProviderConsultationResult
     final_decision: RoutingDecision
+    deterministic_risk: float
+    provider_risk: float | None = None
+    final_risk: float
+    provider_influenced_decision: bool = False
+    fusion_reasons: list[str]
+    decision_sources: list[DecisionSource]
 
 
 def evaluate_routing(
@@ -42,7 +56,8 @@ def evaluate_routing(
     provider: ClassificationProvider | None = None,
 ) -> RoutingEvaluation:
     engine = DecisionEngine()
-    decision = engine.decide(task, repository, mode)
+    analysis = analyze_task(task.description, repository)
+    decision = engine.decide_from_analysis(analysis, repository, mode)
     if mode != UserMode.AUTO:
         consultation = ProviderConsultationResult(
             attempted=False, succeeded=False, skip_reason=ConsultationSkipReason.EXPLICIT_OVERRIDE
@@ -71,7 +86,6 @@ def evaluate_routing(
             skip_reason=ConsultationSkipReason.PROVIDER_UNAVAILABLE,
         )
     else:
-        analysis = analyze_task(task.description, repository)
         try:
             classification = provider.classify(
                 build_classification_context(
@@ -85,6 +99,24 @@ def evaluate_routing(
             consultation = ProviderConsultationResult(
                 attempted=True, succeeded=False, error_kind=str(error)
             )
+    from car.router.fusion import fuse_routing_decision
+
+    outcome = fuse_routing_decision(decision, consultation)
+    sources = [DecisionSource.DETERMINISTIC]
+    if consultation.skip_reason == ConsultationSkipReason.EXPLICIT_OVERRIDE:
+        sources.append(DecisionSource.EXPLICIT_OVERRIDE)
+    elif consultation.skip_reason == ConsultationSkipReason.HARD_CODEX_RULE:
+        sources.append(DecisionSource.HARD_RULE)
+    elif consultation.succeeded:
+        sources.extend([DecisionSource.PROVIDER, DecisionSource.FUSION_POLICY])
     return RoutingEvaluation(
-        deterministic_decision=decision, provider_consultation=consultation, final_decision=decision
+        deterministic_decision=decision,
+        provider_consultation=consultation,
+        final_decision=outcome.final_decision,
+        deterministic_risk=decision.risk.score,
+        provider_risk=outcome.provider_risk,
+        final_risk=outcome.final_risk,
+        provider_influenced_decision=outcome.provider_influenced_decision,
+        fusion_reasons=[reason.value for reason in outcome.reasons],
+        decision_sources=sources,
     )

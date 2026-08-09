@@ -71,6 +71,21 @@ class DecisionEngine:
     ) -> RoutingDecision:
         active_policy = policy or RoutingPolicy()
         analysis = analyze_task(task.description, repository)
+        return self.decide_from_analysis(analysis, repository, mode, active_policy)
+
+    def decide_from_analysis(
+        self,
+        analysis: TaskAnalysis,
+        repository: RepositoryState,
+        mode: UserMode = UserMode.AUTO,
+        policy: RoutingPolicy | None = None,
+    ) -> RoutingDecision:
+        """Decide from already collected deterministic analysis.
+
+        This keeps provider consultation from re-running task analysis merely to
+        construct its controlled classification context.
+        """
+        active_policy = policy or RoutingPolicy()
         risk = assess_risk(analysis, repository)
         if mode != UserMode.AUTO:
             return self._decision(

@@ -56,11 +56,20 @@ constructed, allowlisted Ruff format/lint-fix commands for explicit Python
 files may execute. Commands use structured arguments and no shell. Snapshot
 rollback preserves pre-existing file bytes and never uses Git reset/restore.
 
+Milestone 4C adds an optional, provider-neutral consultation and fusion layer.
+The deterministic decision is always retained as evidence. A successful provider
+classification can conservatively escalate only along `GEMINI → GEMINI_TO_CODEX
+→ CODEX`, provided its confidence meets the configured heuristic threshold
+(default `0.70`). Provider evidence cannot downgrade a route; `PLAN` suggestions
+do not alter an implementation route; L0, hard rules, and explicit user modes
+skip consultation. The final reported risk is `max(deterministic, provider)` when
+provider evidence succeeds, but risk alone never changes the route.
+
 ## Planned
 
 The provider foundation defines provider-neutral classification contracts and a
-local-only Gemini configuration health check. Live Gemini classification is not
-implemented yet; no provider requests or repository source uploads occur.
+local-only Gemini configuration health check. Gemini consultation remains outside
+the normal CLI composition for now, so standard CLI routing remains deterministic.
 
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
