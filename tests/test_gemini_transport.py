@@ -130,7 +130,6 @@ def test_configuration_and_request_failures_make_no_or_one_call():
 def test_retry_service_error_then_success():
     client = Client(Response(payload()))
     client.interactions.response = [FakeError(503), Response(payload())]
-    original = client.interactions.create
 
     def create(**kwargs):
         client.interactions.calls.append(kwargs)
