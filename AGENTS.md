@@ -35,6 +35,7 @@ Project: CAR — Capability Agent Router
 - Provider SDK dependencies must remain isolated behind adapters; router core
   modules must not import Gemini/OpenAI SDKs or persist provider credentials.
 - Gemini is advisory and never authoritative over hard routing rules.
+- Live provider tests must remain explicit opt-in and never run in standard CI.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,
