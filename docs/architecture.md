@@ -21,15 +21,20 @@ Result / Escalation
 
 ## Implemented now
 
-Milestone 1 implements the CLI boundary, Pydantic domain models, local CAR
-configuration, and deterministic repository intelligence. Repository scanning
-collects Git state, file counts, language counts, and simple project signals.
-`car task` validates and records an in-memory task request, but deliberately
-does not route it.
+Milestone 2 implements the CLI boundary, Pydantic domain models, local CAR
+configuration, deterministic repository intelligence, task analysis, risk and
+scope heuristics, and the decision engine. `car analyze` and `car task` decide
+a route but deliberately do not execute it. The decision includes rules and
+reasons for explainability; confidence is heuristic rather than a model
+probability.
 
 ## Planned
 
-Future milestones may add a decision engine, provider abstractions, L0 tools,
-auxiliary-agent and Codex integrations, verification, and escalation. These
-components remain separate so provider-specific dependencies do not enter the
-router core.
+Future milestones may add L0 execution, auxiliary-agent and Codex integrations,
+verification, and escalation. Gemini is the initial auxiliary L1 provider, but
+its classification will be an additional signal rather than the sole routing
+authority. The router core remains provider-independent.
+
+Codex integration will use the locally installed Codex runtime authenticated
+through the user's existing ChatGPT account. CAR must not require an OpenAI API
+key for Codex, and must not read or manage Codex authentication credentials.

@@ -15,8 +15,10 @@ from rich.table import Table
 
 from car import __version__
 from car.config.models import CarConfig
+from car.repository.models import RepositoryState
 from car.repository.scanner import RepositoryScanError, scan_repository
-from car.router.models import TaskRequest
+from car.router.engine import DecisionEngine
+from car.router.models import RoutingDecision, TaskRequest, UserMode
 
 app = typer.Typer(add_completion=False, help="Capability-aware software engineering task routing.")
 console = Console()
@@ -35,7 +37,7 @@ def _load_config(config_path: Path) -> CarConfig:
         raise typer.BadParameter(f"CAR configuration is invalid: {error}") from error
 
 
-def _scan_or_exit() -> object:
+def _scan_or_exit() -> RepositoryState:
     try:
         return scan_repository()
     except RepositoryScanError as error:
@@ -44,7 +46,7 @@ def _scan_or_exit() -> object:
 
 
 def _title() -> None:
-    console.print("[bold]CAR — Capability Agent Router[/]\n")
+    console.print("[bold]CAR - Capability Agent Router[/]\n")
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -80,7 +82,6 @@ def init() -> None:
     console.print(repository.root)
     console.print("\nInitializing CAR...\n")
     console.print("[green]OK[/] Git repository detected")
-
     try:
         created_context = not context_directory.exists()
         context_directory.mkdir(parents=True, exist_ok=True)
@@ -104,7 +105,6 @@ def init() -> None:
     except OSError as error:
         console.print(f"[red]Error:[/] Unable to initialize CAR: {error}")
         raise typer.Exit(code=1) from error
-
     console.print(
         f"[green]OK[/] .car-context {'created' if created_context else 'already present'}"
     )
@@ -113,7 +113,7 @@ def init() -> None:
     console.print("\n[bold green]CAR initialized successfully.[/]")
 
 
-def _print_status(repository: object) -> None:
+def _print_status(repository: RepositoryState) -> None:
     table = Table(title="Repository", show_header=False, box=None)
     table.add_row("Name:", repository.name)
     table.add_row("Root:", str(repository.root))
@@ -123,7 +123,6 @@ def _print_status(repository: object) -> None:
     console.print()
     console.print("[bold]Repository intelligence[/]")
     console.print(f"Tracked files: {repository.tracked_file_count}")
-
     if repository.languages.counts:
         languages = Table(title="Languages", box=None, show_header=False)
         for language, count in repository.languages.counts.items():
@@ -155,30 +154,74 @@ def status() -> None:
     console.print(f"Version:     {__version__}")
 
 
-@app.command()
-def task(
-    description: Annotated[str, typer.Argument(help="Task to acquire for future routing.")],
-) -> None:
-    """Validate and acquire a task without invoking an AI provider."""
+def _routing_inputs(
+    description: str, mode: UserMode
+) -> tuple[TaskRequest, RepositoryState, RoutingDecision]:
     try:
         request = TaskRequest(description=description)
     except ValidationError as error:
         console.print(f"[red]Error:[/] Invalid task: {error.errors()[0]['msg']}")
         raise typer.Exit(code=2) from error
-
     repository = _scan_or_exit()
-    _title()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    selected_mode = mode if mode != UserMode.AUTO else config.default_mode
+    decision = DecisionEngine().decide(request, repository, selected_mode, config.routing_policy)
+    return request, repository, decision
+
+
+def _print_decision(request: TaskRequest, mode: UserMode, decision: RoutingDecision) -> None:
     console.print("[bold]Task[/]")
     console.print(request.description)
+    console.print("\n[bold]Mode[/]")
+    console.print(mode.value.upper())
+    console.print("\n[bold]Analysis[/]")
+    console.print("Categories: " + ", ".join(category.value for category in decision.categories))
+    console.print(f"Complexity: {decision.complexity.value.upper()}")
+    console.print(f"Scope:      {decision.scope.size.value.upper()}")
+    console.print("\n[bold]Risk[/]")
+    console.print(f"{decision.risk.score:.2f} / {decision.risk.level.value.upper()}")
+    console.print("\n[bold]Decision[/]")
+    console.print(f"Route:      {decision.route.value.upper()}")
+    console.print(f"Confidence: {decision.confidence:.2f}")
+    console.print("\n[bold]Reasons[/]")
+    for reason in decision.reasons:
+        console.print(f"- {reason}")
+    console.print("\n[bold]Matched rules[/]")
+    for rule in decision.matched_rules:
+        console.print(f"- {rule}")
+
+
+@app.command()
+def analyze(
+    description: Annotated[str, typer.Argument(help="Task to analyze without execution.")],
+    mode: Annotated[UserMode, typer.Option(help="Routing mode.")] = UserMode.AUTO,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
+) -> None:
+    """Analyze a task and display a deterministic route without executing an agent."""
+    request, _, decision = _routing_inputs(description, mode)
+    if as_json:
+        console.print(decision.model_dump_json(indent=2))
+        return
+    _title()
+    _print_decision(request, mode, decision)
+    console.print("\n[bold]Execution[/]")
+    console.print("Analysis only. No agent executed.")
+
+
+@app.command()
+def task(
+    description: Annotated[str, typer.Argument(help="Task to acquire for future routing.")],
+    mode: Annotated[UserMode, typer.Option(help="Routing mode.")] = UserMode.AUTO,
+) -> None:
+    """Acquire a task, decide its route, and stop before provider execution."""
+    request, repository, decision = _routing_inputs(description, mode)
+    _title()
+    _print_decision(request, mode, decision)
     console.print("\n[bold]Repository[/]")
     console.print(repository.name)
-    console.print("\n[bold]Repository analysis[/]")
-    console.print("[green]OK[/] Git state collected")
-    console.print("[green]OK[/] Languages detected")
-    console.print("[green]OK[/] Project signals detected")
-    console.print("\n[bold]Routing[/]")
-    console.print("[yellow]NOT IMPLEMENTED — milestone 2+[/]")
-    console.print("\n[bold green]Task accepted successfully.[/]")
+    console.print("\n[yellow]Execution not implemented yet.[/]")
+    console.print("[bold green]Task accepted successfully.[/]")
 
 
 def main() -> None:

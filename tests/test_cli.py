@@ -10,7 +10,7 @@ runner = CliRunner()
 def test_version() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "version 0.1.0" in result.stdout
+    assert "version 0.2.0" in result.stdout
 
 
 def test_init_is_idempotent(git_repository: Path, monkeypatch) -> None:

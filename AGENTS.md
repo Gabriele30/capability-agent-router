@@ -27,3 +27,8 @@ Project: CAR — Capability Agent Router
 - Add or update tests for meaningful behavior changes.
 - Do not implement future milestones unless explicitly requested.
 - Keep CLI presentation separate from repository and routing domain logic.
+- Codex integration must use the locally installed Codex runtime authenticated
+  through the user's existing ChatGPT account; do not require an OpenAI API key
+  or read/manage Codex credentials.
+- Gemini is the initial auxiliary L1 provider. Keep the router core provider-
+  independent; Gemini classification is an additional signal, not sole authority.
