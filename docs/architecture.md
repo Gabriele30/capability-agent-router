@@ -43,10 +43,9 @@ Verify
 
 ## Implemented now
 
-Milestone 2 implements the CLI boundary, Pydantic domain models, local CAR
+Milestone 2 established the CLI boundary, Pydantic domain models, local CAR
 configuration, deterministic repository intelligence, task analysis, risk and
-scope heuristics, and the decision engine. `car analyze` and `car task` decide
-a route but deliberately do not execute it. The decision includes rules and
+scope heuristics, and the decision engine. The decision includes rules and
 reasons for explainability; confidence is heuristic rather than a model
 probability.
 
@@ -87,18 +86,15 @@ handoff remain planned; the current provider integration is classification-only.
 
 ## Planned
 
-The provider foundation defines provider-neutral classification contracts and a
-local-only Gemini configuration health check. Gemini consultation remains outside
-the normal CLI composition for now, so standard CLI routing remains deterministic.
+Future work may add more L0 tools, Gemini coding execution, Codex handoff and
+runtime integration, and verification-driven escalation. Provider classification
+will remain advisory rather than the sole routing authority.
 
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.
 
-Future milestones may add more L0 tools, auxiliary-agent and Codex integrations,
-verification, and escalation. Gemini is the initial auxiliary L1 provider, but
-its classification will be an additional signal rather than the sole routing
-authority. The router core remains provider-independent.
+The router core remains provider-independent.
 
 Codex integration will use the locally installed Codex runtime authenticated
 through the user's existing ChatGPT account. CAR must not require an OpenAI API
