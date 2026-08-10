@@ -103,10 +103,10 @@ it does not send a Gemini request or invoke a Codex process.
 | --- | --- |
 | L0 deterministic execution | Implemented and verified |
 | Gemini classification | Implemented, optional |
-| Gemini coding execution | Not implemented |
+| Scoped Gemini coding execution | Explicit preview, authorization, verification, and rollback |
 | Codex routing | Implemented |
-| Codex coding execution | Not implemented |
-| Gemini → Codex coding handoff | Not implemented |
+| Codex coding execution | Not implemented; read-only diagnostics only |
+| Gemini → Codex failure handoff | Optional in-memory read-only diagnostic fallback |
 
 `car execute` may modify only files selected with `--file`, and CAR retains a
 change only after selected CAR-controlled verification checks pass. Failed
@@ -139,7 +139,7 @@ is not enabled in CI.
 ## Roadmap
 
 - Current: 0.4 — routing intelligence.
-- Next: L1 Gemini coding execution, verification-driven escalation, Codex
-  handoff, and Codex runtime integration.
+- Next: broaden explicit coding execution coverage while keeping verification,
+  rollback, and read-only Codex diagnostics under user authorization.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.
