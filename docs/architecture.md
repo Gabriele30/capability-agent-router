@@ -209,6 +209,22 @@ Only verified failure evidence enters this path. A successful Codex diagnostic d
 not mean that the coding task is fixed: its top-level result remains unsuccessful,
 the workspace remains rolled back, and no new patch is requested or applied.
 
+Milestone 5D2-A adds a final caller-owned authorization boundary:
+
+```text
+Explicit user authorization (default: false)
+  ↓
+CodingFlowGateway
+  ↓
+Coding execution policy
+  ↓
+Gemini coding → validate/apply/verify → optional Codex read-only analysis
+```
+
+Authorization is runtime-only and required in addition to the existing execution
+policies. It is not derived from a model, environment, or configuration file, and it
+cannot bypass CAR validation, verification, rollback, or Codex read-only safeguards.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

@@ -100,6 +100,9 @@ Project: CAR — Capability Agent Router
   the existing post-failure composition. A successful read-only Codex diagnosis is
   never a coding-task success and must not trigger a second patch, retry, persistence,
   or CLI action.
+- Any caller of the internal coding flow must supply an explicit, runtime-only user
+  authorization. Authorization defaults to false, is never model-derived or persisted,
+  and cannot weaken validation, verification, rollback, sandbox, or execution policies.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

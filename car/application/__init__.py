@@ -23,6 +23,13 @@ from car.application.escalation import (
     CodexEscalationExecutionResult,
     execute_codex_escalation,
 )
+from car.application.execution_gateway import (
+    CodingFlowAuthorization,
+    CodingFlowExecutionRequest,
+    CodingFlowGateway,
+    CodingFlowGatewayFailureKind,
+    CodingFlowGatewayResult,
+)
 from car.application.post_failure import (
     PostFailurePipelineOutcome,
     PostFailurePipelineResult,
@@ -50,4 +57,9 @@ __all__ = [
     "CodingFlowOutcome",
     "CodingFlowResult",
     "execute_coding_flow",
+    "CodingFlowAuthorization",
+    "CodingFlowExecutionRequest",
+    "CodingFlowGateway",
+    "CodingFlowGatewayFailureKind",
+    "CodingFlowGatewayResult",
 ]
