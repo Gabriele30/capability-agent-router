@@ -69,6 +69,15 @@ car analyze "Fix parser regression"
 
 # Only a final L0 route may currently execute.
 car task "Format car/router/engine.py"
+
+# Explicitly preview a scoped coding attempt. Confirmation defaults to no.
+car execute "Fix parser regression" --file car/parser.py --verify pytest
+
+# --yes authorizes only this invocation; Codex fallback remains off.
+car execute "Fix parser regression" --file car/parser.py --verify pytest --yes
+
+# Optional fallback is diagnostic and read-only.
+car execute "Fix parser regression" --file car/parser.py --verify pytest --yes --codex-analysis
 ```
 
 `car analyze` is read-only with respect to the repository, even when Gemini is
@@ -98,6 +107,12 @@ it does not send a Gemini request or invoke a Codex process.
 | Codex routing | Implemented |
 | Codex coding execution | Not implemented |
 | Gemini → Codex coding handoff | Not implemented |
+
+`car execute` may modify only files selected with `--file`, and CAR retains a
+change only after selected CAR-controlled verification checks pass. Failed
+verification is rolled back. Execution requires per-invocation confirmation (or
+`--yes`), which is never persisted. `--codex-analysis` enables only a read-only
+diagnostic fallback and does not allow Codex to fix files.
 
 Codex is currently a routing target, not an executable CAR provider. Future
 Codex execution will use the locally installed Codex runtime authenticated by the

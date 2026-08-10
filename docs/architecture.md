@@ -225,6 +225,14 @@ Authorization is runtime-only and required in addition to the existing execution
 policies. It is not derived from a model, environment, or configuration file, and it
 cannot bypass CAR validation, verification, rollback, or Codex read-only safeguards.
 
+Milestone 5D2-B exposes this boundary through `car execute`, while leaving
+`car task` unchanged. The command accepts explicit existing `--file` scope and
+CAR-controlled `--verify ruff|pytest` presets, renders a preview, and defaults its
+confirmation to no. `--yes` authorizes only the current invocation. Optional
+`--codex-analysis` enables a read-only diagnostic fallback; a successful diagnosis
+is still not a coding-task success. The first CLI path does not authorize CREATE
+targets or discover files automatically.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

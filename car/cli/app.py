@@ -15,20 +15,48 @@ from rich.console import Console
 from rich.table import Table
 
 from car import __version__
+from car.application.codex import CodexExecutionPolicy
+from car.application.coding_execution import CodingPipelineExecutionPolicy
+from car.application.execution_gateway import (
+    CodingFlowAuthorization,
+    CodingFlowExecutionRequest,
+    CodingFlowGateway,
+)
 from car.application.routing import build_gemini_provider, evaluate_analysis
+from car.codex.runtime import LocalCodexRuntime
+from car.coding.gemini import GeminiCodingProvider
+from car.coding.models import (
+    CodingFileContext,
+    CodingTaskContext,
+    normalize_repository_relative_path,
+)
 from car.config.models import CarConfig
-from car.execution.models import ExecutionResult, ExecutionStatus
+from car.escalation.models import HandoffPolicy
+from car.execution.models import CommandSpec, ExecutionResult, ExecutionStatus
 from car.l0.executor import L0Executor
 from car.l0.resolver import L0ResolutionError, resolve_l0_plan
+from car.patching.models import PatchValidationPolicy
+from car.providers.models import RepositoryClassificationContext
 from car.repository.models import RepositoryState
 from car.repository.scanner import RepositoryScanError, scan_repository
-from car.router.consultation import RoutingEvaluation
+from car.router.consultation import RoutingEvaluation, evaluate_routing
 from car.router.engine import DecisionEngine
 from car.router.models import Route, RoutingDecision, TaskRequest, UserMode
+from car.verification.models import VerificationPlan
 
 app = typer.Typer(add_completion=False, help="Capability-aware software engineering task routing.")
 console = Console()
 LOGGER = logging.getLogger(__name__)
+
+
+def _build_coding_provider(config: CarConfig) -> GeminiCodingProvider:
+    """Construct the coding adapter only after an authorized CLI invocation."""
+    return GeminiCodingProvider(config.providers.gemini)
+
+
+def _build_codex_runtime() -> LocalCodexRuntime:
+    """Construct the existing read-only runtime only for opted-in analysis."""
+    return LocalCodexRuntime()
 
 
 def _context_paths(root: Path) -> tuple[Path, Path, Path]:
@@ -322,6 +350,227 @@ def analyze(
             console.print(f"\nL0 execution unavailable: {error}")
     console.print("\n[bold]Execution[/]")
     console.print("Analysis only. Nothing executed.")
+
+
+def _selected_coding_files(root: Path, values: list[str]) -> list[CodingFileContext]:
+    """Read only explicit, existing, regular, repository-scoped text files."""
+    policy = PatchValidationPolicy()
+    selected: list[CodingFileContext] = []
+    for value in values:
+        try:
+            relative = normalize_repository_relative_path(value)
+        except ValueError as error:
+            raise typer.BadParameter(f"Unsafe selected file: {value}") from error
+        parts = relative.split("/")
+        if parts[0] in policy.protected_prefixes or any(
+            part == ".env" or part.startswith(".env.") for part in parts
+        ):
+            raise typer.BadParameter(f"Protected selected file: {relative}")
+        target = root / relative
+        try:
+            target.resolve(strict=True).relative_to(root.resolve())
+        except (OSError, ValueError) as error:
+            raise typer.BadParameter(f"Selected file leaves repository: {relative}") from error
+        if target.is_symlink() or not target.is_file():
+            raise typer.BadParameter(f"Selected file must be a regular file: {relative}")
+        try:
+            selected.append(
+                CodingFileContext(path=relative, content=target.read_text(encoding="utf-8"))
+            )
+        except (OSError, UnicodeDecodeError) as error:
+            raise typer.BadParameter(
+                f"Selected file is not supported UTF-8 text: {relative}"
+            ) from error
+    return selected
+
+
+def _verification_plan(
+    root: Path, checks: list[str], files: list[CodingFileContext]
+) -> VerificationPlan:
+    commands = []
+    for check in checks:
+        if check == "ruff":
+            commands.append(
+                CommandSpec(
+                    args=["ruff", "check", *[item.path for item in files]],
+                    cwd=str(root),
+                    timeout_seconds=60,
+                )
+            )
+        elif check == "pytest":
+            commands.append(
+                CommandSpec(args=["python", "-m", "pytest"], cwd=str(root), timeout_seconds=60)
+            )
+        else:
+            raise typer.BadParameter("Verification checks must be one of: ruff, pytest.")
+    return VerificationPlan(commands=commands)
+
+
+def _print_execute_preview(
+    request: TaskRequest,
+    repository: RepositoryState,
+    evaluation: RoutingEvaluation,
+    files: list[CodingFileContext],
+    checks: list[str],
+    codex_analysis: bool,
+) -> None:
+    _title()
+    console.print("[bold]Coding execution preview[/]")
+    console.print(f"Task:       {request.description}")
+    console.print(f"Repository: {repository.name}")
+    console.print(f"Route:      {evaluation.final_decision.route.value.upper()}")
+    console.print(f"Risk:       {evaluation.final_risk:.2f}")
+    console.print(f"Complexity: {evaluation.final_decision.complexity.value.upper()}")
+    console.print("Selected files:")
+    for file in files:
+        console.print(f"- {file.path}")
+    console.print("Verification checks: " + (", ".join(checks) if checks else "none"))
+    console.print("Gemini coding: enabled only after explicit authorization")
+    console.print(f"Codex fallback analysis: {'enabled' if codex_analysis else 'disabled'}")
+    console.print("Codex workspace mode: READ-ONLY")
+    console.print("Files may be modified if Gemini produces a patch that passes CAR validation.")
+
+
+def _print_coding_flow_result(result) -> None:
+    if result.succeeded:
+        console.print("\n[bold green]OK coding task verified[/]")
+        return
+    flow = result.flow_result
+    if flow is None:
+        console.print("\nCoding execution was not authorized.")
+        return
+    if flow.post_failure and flow.post_failure.attempted_codex:
+        status = "succeeded" if flow.post_failure.succeeded else "failed"
+        console.print("\nGemini fix failed and was rolled back.")
+        console.print(f"Codex read-only analysis: {status}.")
+        console.print("Task remains unresolved.")
+    elif flow.post_failure and flow.post_failure.escalation.should_escalate:
+        console.print("\nGemini fix failed and was rolled back.")
+        console.print("Codex read-only analysis is disabled.")
+    else:
+        console.print("\nCoding task was not verified; workspace was kept safe.")
+
+
+@app.command()
+def execute(
+    description: Annotated[
+        str, typer.Argument(help="Coding task; selected files may be modified.")
+    ],
+    files: Annotated[
+        list[str] | None,
+        typer.Option("--file", help="Existing repository-relative file to authorize."),
+    ] = None,
+    verify: Annotated[
+        list[str] | None, typer.Option("--verify", help="CAR-controlled check: ruff or pytest.")
+    ] = None,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Authorize this invocation after preview.")
+    ] = False,
+    codex_analysis: Annotated[
+        bool,
+        typer.Option("--codex-analysis", help="Enable optional read-only Codex fallback analysis."),
+    ] = False,
+) -> None:
+    """Preview a scoped coding execution; authorization and verification are mandatory."""
+    try:
+        request = TaskRequest(description=description)
+    except ValidationError as error:
+        console.print(f"[red]Error:[/] Invalid task: {error.errors()[0]['msg']}")
+        raise typer.Exit(code=2) from error
+    repository = _scan_or_exit()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    mode = config.default_mode
+    evaluation = evaluate_routing(request, repository, mode, provider=None)
+    route = evaluation.final_decision.route
+    if route == Route.L0:
+        _title()
+        console.print("L0 execution remains available through the existing `car task` path.")
+        return
+    if route == Route.CODEX:
+        _title()
+        console.print("Direct Codex coding execution is not implemented yet.")
+        return
+    if route == Route.PLAN:
+        _title()
+        console.print("Planning route selected; no repository mutation will be performed.")
+        return
+    selected_arguments = files or []
+    verification_checks = verify or []
+    if not selected_arguments:
+        console.print(
+            "No files selected for coding execution. Use --file PATH to authorize the coding scope."
+        )
+        raise typer.Exit(code=2)
+    try:
+        selected = _selected_coding_files(repository.root, selected_arguments)
+    except typer.BadParameter as error:
+        console.print(f"[red]Error:[/] {error}")
+        raise typer.Exit(code=2) from error
+    if not verification_checks:
+        console.print("At least one CAR-controlled verification check is required.")
+        raise typer.Exit(code=2)
+    try:
+        plan = _verification_plan(repository.root, verification_checks, selected)
+    except typer.BadParameter as error:
+        console.print(f"[red]Error:[/] {error}")
+        raise typer.Exit(code=2) from error
+    _print_execute_preview(
+        request, repository, evaluation, selected, verification_checks, codex_analysis
+    )
+    authorized = yes
+    if not yes:
+        try:
+            authorized = typer.confirm("Proceed with repository modifications?", default=False)
+        except (EOFError, typer.Abort):
+            authorized = False
+    if not authorized:
+        console.print("\nExecution cancelled. No repository changes were made.")
+        return
+    context = CodingTaskContext(
+        task=request.description,
+        route=route,
+        repository=RepositoryClassificationContext(
+            name=repository.name,
+            branch=repository.git.branch,
+            dirty=repository.git.dirty,
+            languages=repository.languages.counts,
+            systems=repository.project_signals.systems,
+        ),
+        files=selected,
+    )
+    gateway = CodingFlowGateway(
+        _build_coding_provider(config),
+        _build_codex_runtime() if codex_analysis else _UnavailableCodexRuntime(),
+    )
+    result = gateway.execute(
+        CodingFlowExecutionRequest(
+            repository_root=repository.root,
+            routing_evaluation=evaluation,
+            repository_state=repository,
+            coding_context=context,
+            coding_policy=None,
+            patch_validation_policy=None,
+            verification_plan=plan,
+            coding_execution_policy=CodingPipelineExecutionPolicy(enabled=True),
+            handoff_policy=HandoffPolicy(),
+            codex_execution_policy=CodexExecutionPolicy(enabled=codex_analysis),
+        ),
+        CodingFlowAuthorization(authorized=True),
+    )
+    _print_coding_flow_result(result)
+    if not result.succeeded:
+        raise typer.Exit(code=1)
+
+
+class _UnavailableCodexRuntime:
+    """Never touched while Codex analysis is disabled; avoids constructing a runtime."""
+
+    def health(self):
+        raise AssertionError("Codex runtime must not be used when analysis is disabled")
+
+    def execute(self, request):
+        raise AssertionError("Codex runtime must not be used when analysis is disabled")
 
 
 @app.command()
