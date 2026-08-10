@@ -132,9 +132,15 @@ Patch Validator
   ↓
 ValidatedPatchSet
   ↓
-[future snapshot + safe apply]
+Snapshot
+  ↓
+Safe Apply
+  ↓
+Applied Transaction
   ↓
 [future verification]
+  ├── PASS → finalize
+  └── FAIL → rollback
 ```
 
 Model-generated diffs are untrusted data. A valid `CodingProposal` is not
@@ -143,8 +149,17 @@ subset for CREATE and MODIFY, checks selected-file authorization, paths, symlink
 protected locations, target existence, size and hunk limits, and returns structured
 violations. Parsing and validation never write files, invoke tools, or contact a
 provider. Default limits are 10 files, 64 KiB per patch, 256 KiB in total, and
-100 hunks per file. Safe application, snapshot/rollback, and verification remain
-planned.
+100 hunks per file.
+
+Safe application starts only from `ValidatedPatchSet`, snapshots all targets in
+memory before the first write, and rechecks targets immediately before mutation.
+It uses strict hunk context with no fuzzy matching; a partial failure restores only
+files CAR actually modified or created. The controlled Python implementation does
+not invoke a shell, `git apply`, or external patch tool. A successful transaction
+retains its in-memory rollback handle for future verification. The first apply
+implementation accepts UTF-8 text with a uniform LF or CRLF style and preserves
+that style for MODIFY; CREATE uses UTF-8 LF. Verification itself, CLI coding
+integration, and provider-triggered application remain planned.
 
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before

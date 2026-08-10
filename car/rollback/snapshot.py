@@ -55,3 +55,34 @@ class WorkspaceSnapshot:
             destination = self.root / path
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(content)
+
+
+@dataclass(frozen=True)
+class TargetFileSnapshot:
+    """Byte state of one CAR-authorized target before patch application."""
+
+    path: Path
+    existed: bool
+    content: bytes | None
+
+
+@dataclass(frozen=True)
+class TargetSnapshot:
+    """In-memory, target-scoped snapshot for a single safe-patch transaction."""
+
+    root: Path
+    files: dict[Path, TargetFileSnapshot]
+
+    @classmethod
+    def capture(cls, root: Path, targets: list[Path]) -> TargetSnapshot:
+        """Capture every target before any mutation; no persistence or Git is used."""
+        files: dict[Path, TargetFileSnapshot] = {}
+        for target in targets:
+            relative = target.relative_to(root)
+            if target.exists():
+                files[relative] = TargetFileSnapshot(
+                    path=relative, existed=True, content=target.read_bytes()
+                )
+            else:
+                files[relative] = TargetFileSnapshot(path=relative, existed=False, content=None)
+        return cls(root=root, files=files)

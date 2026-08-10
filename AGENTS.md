@@ -63,6 +63,10 @@ Project: CAR — Capability Agent Router
 - Model-generated diffs are untrusted data. A valid `CodingProposal` is not
   authorization to modify files: CAR must parse and validate unified diffs,
   scope, paths, operations, and repository boundaries before any future mutation.
+- Safe patch application accepts only CAR-validated patch sets. Snapshot every
+  target before the first mutation, use strict hunk context (never fuzzy patching),
+  and rollback only paths CAR actually wrote; never use shell, `git apply`, or
+  repository-wide restore for model-generated changes.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

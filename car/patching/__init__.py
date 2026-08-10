@@ -1,10 +1,13 @@
-"""CAR-owned, read-only parsing and validation of untrusted coding patches."""
+"""CAR-owned parsing, validation, and controlled application of coding patches."""
 
+from car.patching.apply import PatchApplyTransaction, SafePatchApplier
 from car.patching.models import (
     ParsedFilePatch,
     ParsedHunk,
     ParsedHunkLine,
     ParsedPatchSet,
+    PatchApplyFailureKind,
+    PatchApplyResult,
     PatchValidationPolicy,
     PatchValidationResult,
     PatchViolation,
@@ -14,6 +17,9 @@ from car.patching.models import (
 from car.patching.validation import PatchValidator
 
 __all__ = [
+    "PatchApplyFailureKind",
+    "PatchApplyResult",
+    "PatchApplyTransaction",
     "ParsedFilePatch",
     "ParsedHunk",
     "ParsedHunkLine",
@@ -21,6 +27,7 @@ __all__ = [
     "PatchValidationPolicy",
     "PatchValidationResult",
     "PatchValidator",
+    "SafePatchApplier",
     "PatchViolation",
     "PatchViolationKind",
     "ValidatedPatchSet",
