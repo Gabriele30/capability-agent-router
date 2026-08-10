@@ -94,6 +94,10 @@ variable available:
 $env:GEMINI_API_KEY="<your-key>"
 ```
 
+For current Gemini coding transports, use a configured model such as
+`gemini-3.6-flash`; the model remains a local configuration choice and is never
+hardcoded by the router.
+
 CAR never persists the API key value. `car providers` reports local-only status:
 it does not send a Gemini request or invoke a Codex process.
 
@@ -136,6 +140,8 @@ pytest
 Standard tests are offline-first. Live Gemini validation is explicit opt-in and
 is not enabled in CI. The end-to-end `car execute` coding-flow validation requires
 `CAR_RUN_LIVE_CODING_FLOW_TESTS=1` and uses a synthetic temporary repository.
+The Gemini-failure-to-read-only-Codex escalation validation is independently gated
+by `CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1` and is never enabled in CI.
 
 ## Roadmap
 

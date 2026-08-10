@@ -240,6 +240,16 @@ with explicit file scope, `--verify pytest`, and `--yes`, then checks the verifi
 modification. Standard test runs skip this integration test before provider creation,
 health checks, or network activity.
 
+Milestone 5D2-C2 adds a separately opt-in live failure-path validation through
+`CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1`. A synthetic calculator task receives a
+real Gemini proposal scoped to `calculator.py`; a deterministic pytest sentinel
+then forces verification failure. CAR must roll back the applied patch byte-for-byte
+before forwarding bounded structured evidence to the existing ephemeral read-only
+Codex diagnostic runtime. A successful Codex diagnosis remains unresolved at the
+top level and cannot alter the workspace. Current Gemini transports require
+`google-genai>=2.0.0,<3`; model selection remains local configuration (for example,
+`gemini-3.6-flash`) rather than router policy.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

@@ -111,6 +111,10 @@ Project: CAR — Capability Agent Router
   `CAR_RUN_LIVE_CODING_FLOW_TESTS=1`. It uses a synthetic temporary Git repository,
   existing local Gemini configuration, and the real `car execute` path; standard CI
   must never enable it.
+- Live Gemini-failure-to-Codex escalation validation is independently opt-in through
+  `CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1`. It uses a synthetic Git repository and
+  requires locally configured Gemini plus a ready locally authenticated Codex CLI;
+  Codex remains ephemeral and read-only.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

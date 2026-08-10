@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Capability Agent Router contributors" }]
-dependencies = ["google-genai>=1,<2", "pydantic>=2.7,<3", "rich>=13.7,<15", "typer>=0.12,<1"]
+dependencies = ["google-genai>=2.0.0,<3", "pydantic>=2.7,<3", "rich>=13.7,<15", "typer>=0.12,<1"]
 
 [project.urls]
 Repository = "https://github.com/Gabriele30/capability-agent-router"
