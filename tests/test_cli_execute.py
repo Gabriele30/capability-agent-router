@@ -19,15 +19,18 @@ runner = CliRunner()
 class FakeProvider:
     name = "fake"
 
-    def __init__(self, proposal: CodingProposal) -> None:
+    def __init__(
+        self, proposal: CodingProposal, status: ProviderStatus = ProviderStatus.CONFIGURED
+    ) -> None:
         self.proposal = proposal
+        self.status = status
         self.calls = 0
 
     def capabilities(self):
         return ProviderCapabilities(supports_code_changes=True)
 
     def health(self):
-        return ProviderHealth(status=ProviderStatus.CONFIGURED)
+        return ProviderHealth(status=self.status)
 
     def propose(self, context):
         self.calls += 1
@@ -118,9 +121,30 @@ def test_execute_yes_runs_gateway_once_and_retains_verified_patch(
     )
 
     assert result.exit_code == 0 and "Coding execution preview" in result.stdout
-    assert "coding task verified" in result.stdout and provider.calls == 1
+    assert "CAR Execution Result" in result.stdout and "Task: RESOLVED" in result.stdout
+    assert "Workspace: updated safely" in result.stdout and provider.calls == 1
+    assert "Codex analysis: not required" in result.stdout
     assert runtime.health_calls == runtime.execute_calls == 0
     assert target.read_text(encoding="utf-8") == "value = 2\n"
+
+
+def test_execute_gemini_to_codex_verified_success_does_not_call_codex(
+    git_repository: Path, monkeypatch
+):
+    target = git_repository / "sample.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    provider, runtime = FakeProvider(_proposal("value = 1\n")), FakeRuntime()
+    _patch_dependencies(monkeypatch, provider, runtime, VerificationStatus.PASSED)
+    monkeypatch.chdir(git_repository)
+
+    result = runner.invoke(
+        app,
+        ["execute", "Fix parser regression", "--file", "sample.py", "--verify", "ruff", "--yes"],
+    )
+
+    assert result.exit_code == 0 and "Route: GEMINI_TO_CODEX" in result.stdout
+    assert "Task: RESOLVED" in result.stdout and "Codex analysis: not required" in result.stdout
+    assert runtime.health_calls == runtime.execute_calls == 0
 
 
 def test_execute_blocks_missing_scope_verification_unsafe_file_and_direct_codex(
@@ -173,7 +197,27 @@ def test_execute_failure_rolls_back_and_optional_codex_analysis_stays_unresolved
     )
 
     assert result.exit_code == 1
-    assert "Codex read-only analysis: succeeded" in result.stdout
-    assert "Task remains unresolved" in result.stdout
+    assert "Codex analysis: succeeded (read-only)" in result.stdout
+    assert "Workspace: restored" in result.stdout and "Task: UNRESOLVED" in result.stdout
     assert provider.calls == runtime.health_calls == runtime.execute_calls == 1
     assert target.read_bytes() == b"value = 1\n" and not (git_repository / ".car-context").exists()
+
+
+def test_execute_provider_unavailable_reports_unchanged_workspace(
+    git_repository: Path, monkeypatch
+):
+    target = git_repository / "sample.py"
+    target.write_bytes(b"value = 1\n")
+    provider = FakeProvider(_proposal("value = 1\n"), ProviderStatus.MISSING_CREDENTIALS)
+    runtime = FakeRuntime()
+    _patch_dependencies(monkeypatch, provider, runtime, VerificationStatus.PASSED)
+    monkeypatch.chdir(git_repository)
+
+    result = runner.invoke(
+        app, ["execute", "Fix CSS spacing", "--file", "sample.py", "--verify", "ruff", "--yes"]
+    )
+
+    assert result.exit_code == 1 and "Reason: Provider unavailable" in result.stdout
+    assert "Workspace: unchanged" in result.stdout and "Task: UNRESOLVED" in result.stdout
+    assert provider.calls == runtime.health_calls == runtime.execute_calls == 0
+    assert target.read_bytes() == b"value = 1\n"

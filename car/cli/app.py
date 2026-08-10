@@ -23,6 +23,7 @@ from car.application.execution_gateway import (
     CodingFlowGateway,
 )
 from car.application.routing import build_gemini_provider, evaluate_analysis
+from car.cli.presentation import present_execution_result
 from car.codex.runtime import LocalCodexRuntime
 from car.coding.gemini import GeminiCodingProvider
 from car.coding.models import (
@@ -432,23 +433,24 @@ def _print_execute_preview(
 
 
 def _print_coding_flow_result(result) -> None:
-    if result.succeeded:
-        console.print("\n[bold green]OK coding task verified[/]")
-        return
-    flow = result.flow_result
-    if flow is None:
-        console.print("\nCoding execution was not authorized.")
-        return
-    if flow.post_failure and flow.post_failure.attempted_codex:
-        status = "succeeded" if flow.post_failure.succeeded else "failed"
-        console.print("\nGemini fix failed and was rolled back.")
-        console.print(f"Codex read-only analysis: {status}.")
-        console.print("Task remains unresolved.")
-    elif flow.post_failure and flow.post_failure.escalation.should_escalate:
-        console.print("\nGemini fix failed and was rolled back.")
-        console.print("Codex read-only analysis is disabled.")
-    else:
-        console.print("\nCoding task was not verified; workspace was kept safe.")
+    presentation = present_execution_result(result)
+    console.print("\n[bold]CAR Execution Result[/]")
+    console.print(f"Route: {presentation.route}")
+    console.print(f"Coding: {presentation.coding}")
+    if presentation.temporary_changes:
+        console.print(f"Files changed temporarily: {presentation.files_changed}")
+    elif presentation.files_changed:
+        console.print(f"Files changed: {presentation.files_changed}")
+    console.print(f"Verification: {presentation.verification}")
+    for check in presentation.verification_checks:
+        console.print(f"  {check}")
+    console.print(f"Rollback: {presentation.rollback}")
+    console.print(f"Codex analysis: {presentation.codex_analysis}")
+    console.print(f"Workspace: {presentation.workspace}")
+    if presentation.failure_reason:
+        console.print(f"Reason: {presentation.failure_reason}")
+    style = "green" if presentation.task == "RESOLVED" else "red"
+    console.print(f"Task: [{style}]{presentation.task}[/]")
 
 
 @app.command()
