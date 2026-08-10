@@ -141,6 +141,13 @@ structured handoff evidence travel over stdin; output is bounded. The child
 environment is a positive allowlist for process, platform, local login discovery,
 and locale variables, excluding provider and token environment values.
 
+On Windows, live validation with Codex CLI 0.147.0 observed workspace writes being
+rejected until CAR selected the Windows sandbox backend explicitly with
+`windows.sandbox="unelevated"`. The controlled-write runtime therefore pins that
+backend on Windows only, while retaining `workspace-write`, `approval=never`,
+`--ignore-user-config`, and no additional writable roots. This is not an elevated
+sandbox and does not apply to the separate read-only runtime or to POSIX commands.
+
 An exit-zero process with a final message means only **Codex execution completed**.
 It does not accept a change, validate a delta, verify a task, or modify the source
 repository. Workspace lifecycle remains caller-owned so a future stage can inspect

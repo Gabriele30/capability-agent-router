@@ -118,11 +118,13 @@ class ControlledCodexWriteRuntime:
         runner: ControlledCodexProcessRunner | None = None,
         which: Callable[[str], str | None] | None = None,
         policy: CodexWritePolicy | None = None,
+        is_windows: bool | None = None,
     ) -> None:
         self._workspace_manager = workspace_manager
         self._runner = runner or SubprocessControlledCodexRunner()
         self._which = which or shutil.which
         self._policy = policy or CodexWritePolicy()
+        self._is_windows = os.name == "nt" if is_windows is None else is_windows
 
     def health(self) -> ControlledCodexWriteHealth:
         """Check only the resolved local CLI login, and only when explicitly enabled."""
@@ -148,7 +150,7 @@ class ControlledCodexWriteRuntime:
         if health.executable is None:
             return _result(CodexWriteFailureKind.CODEX_NOT_READY, workspace)
         process = self._runner.run(
-            _execution_argv(health.executable),
+            _execution_argv(health.executable, is_windows=self._is_windows),
             cwd=workspace.workspace.path,
             stdin=_stdin(request),
             environment=controlled_child_environment(),
@@ -246,18 +248,23 @@ class ControlledCodexWriteRuntime:
         return self._workspace_manager.owns(workspace)
 
 
-def _execution_argv(executable: str) -> list[str]:
-    return [
-        executable,
-        "--ask-for-approval",
-        "never",
-        "exec",
-        "--ephemeral",
-        "--sandbox",
-        "workspace-write",
-        "--ignore-user-config",
-        CONTROLLED_WRITE_INSTRUCTION,
-    ]
+def _execution_argv(executable: str, *, is_windows: bool) -> list[str]:
+    argv = [executable]
+    if is_windows:
+        argv.extend(["-c", 'windows.sandbox="unelevated"'])
+    argv.extend(
+        [
+            "--ask-for-approval",
+            "never",
+            "exec",
+            "--ephemeral",
+            "--sandbox",
+            "workspace-write",
+            "--ignore-user-config",
+            CONTROLLED_WRITE_INSTRUCTION,
+        ]
+    )
+    return argv
 
 
 def controlled_child_environment(parent: dict[str, str] | None = None) -> dict[str, str]:

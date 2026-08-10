@@ -121,12 +121,13 @@ def _ready() -> ControlledCodexProcessResult:
     return ControlledCodexProcessResult(exit_code=0, stdout="logged in")
 
 
-def _runtime(manager, runner, *, executable="C:/tools/codex.CMD", policy=None):
+def _runtime(manager, runner, *, executable="C:/tools/codex.CMD", policy=None, is_windows=None):
     return ControlledCodexWriteRuntime(
         workspace_manager=manager,
         runner=runner,
         which=lambda name: executable,
         policy=policy or _policy(),
+        is_windows=is_windows,
     )
 
 
@@ -172,27 +173,45 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
     runner = FakeRunner(
         [_ready(), _ready(), ControlledCodexProcessResult(exit_code=0, stdout="Done")]
     )
-    runtime = _runtime(manager, runner, executable=executable)
+    runtime = _runtime(
+        manager, runner, executable=executable, is_windows=executable.endswith(".CMD")
+    )
     try:
         request = _request(projected, task).model_copy(update={"handoff": _handoff()})
         result = runtime.execute(request, CodexWriteAuthorization(authorized=True))
         call = runner.calls[1]
         argv = call["argv"]
         assert result.process_succeeded and not result.changes_accepted
-        assert argv == [
-            executable,
-            "--ask-for-approval",
-            "never",
-            "exec",
-            "--ephemeral",
-            "--sandbox",
-            "workspace-write",
-            "--ignore-user-config",
-            CONTROLLED_WRITE_INSTRUCTION,
-        ]
+        expected = [executable]
+        if executable.endswith(".CMD"):
+            expected.extend(["-c", 'windows.sandbox="unelevated"'])
+        expected.extend(
+            [
+                "--ask-for-approval",
+                "never",
+                "exec",
+                "--ephemeral",
+                "--sandbox",
+                "workspace-write",
+                "--ignore-user-config",
+                CONTROLLED_WRITE_INSTRUCTION,
+            ]
+        )
+        assert argv == expected
+        if executable.endswith(".CMD"):
+            assert argv[:3] == [executable, "-c", 'windows.sandbox="unelevated"']
+        else:
+            assert "windows.sandbox" not in " ".join(argv)
         assert argv.index("--ask-for-approval") < argv.index("exec")
         assert not any(
-            flag in argv for flag in ("danger-full-access", "--add-dir", "--skip-git-repo-check")
+            flag in argv
+            for flag in (
+                'windows.sandbox="elevated"',
+                "danger-full-access",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--add-dir",
+                "--skip-git-repo-check",
+            )
         )
         assert call["cwd"] == projected.workspace.path
         assert task in call["stdin"]
