@@ -60,6 +60,9 @@ Project: CAR — Capability Agent Router
   and one final best-effort close. Retry only normalized timeout, rate-limit, and
   service errors; never enable nested SDK retry. Coding live validation is gated by
   `CAR_RUN_LIVE_GEMINI_CODING_TESTS=1` and must use synthetic context only.
+- Model-generated diffs are untrusted data. A valid `CodingProposal` is not
+  authorization to modify files: CAR must parse and validate unified diffs,
+  scope, paths, operations, and repository boundaries before any future mutation.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

@@ -119,6 +119,33 @@ separately gated by `CAR_RUN_LIVE_GEMINI_CODING_TESTS=1`; it sends synthetic con
 only and stops after proposal validation. Patch application, verification, CLI coding
 integration, and Codex escalation remain unimplemented.
 
+CAR now has a separate, read-only safe-patch boundary:
+
+```text
+CodingProvider
+  ↓
+CodingProposal
+  ↓
+Patch Parser
+  ↓
+Patch Validator
+  ↓
+ValidatedPatchSet
+  ↓
+[future snapshot + safe apply]
+  ↓
+[future verification]
+```
+
+Model-generated diffs are untrusted data. A valid `CodingProposal` is not
+authorization to mutate a repository. CAR accepts only a strict text unified-diff
+subset for CREATE and MODIFY, checks selected-file authorization, paths, symlinks,
+protected locations, target existence, size and hunk limits, and returns structured
+violations. Parsing and validation never write files, invoke tools, or contact a
+provider. Default limits are 10 files, 64 KiB per patch, 256 KiB in total, and
+100 hunks per file. Safe application, snapshot/rollback, and verification remain
+planned.
+
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.

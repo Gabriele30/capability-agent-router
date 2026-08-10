@@ -8,7 +8,8 @@ from car.providers.models import ProviderErrorKind, RepositoryClassificationCont
 from car.router.models import Route
 
 
-def _repository_relative_path(value: str) -> str:
+def normalize_repository_relative_path(value: str) -> str:
+    """Normalize and validate a repository-relative path without filesystem access."""
     normalized = value.replace("\\", "/")
     if not normalized or normalized.startswith("/") or ":" in normalized:
         raise ValueError("path must be repository-relative")
@@ -17,6 +18,11 @@ def _repository_relative_path(value: str) -> str:
             "path must not contain empty, current-directory, or parent-directory segments"
         )
     return normalized
+
+
+def _repository_relative_path(value: str) -> str:
+    """Backward-compatible internal alias for the canonical path validator."""
+    return normalize_repository_relative_path(value)
 
 
 class CodingFileContext(BaseModel):
