@@ -117,6 +117,24 @@ does not parse Markdown or persist `.car-context` artifacts. A ready local runti
 is required before one execution can occur. This remains separate from `car task`,
 does not retry or alter runtime sandbox settings, and cannot enable workspace writes.
 
+Milestone 5C3 adds a narrow post-failure coordinator:
+
+```text
+EscalationDecision + CodexHandoff
+  ↓
+Read-only Codex escalation coordinator
+  ↓
+CodexExecutionPolicy
+  ↓
+CodexExecutionService
+  ↓
+LocalCodexRuntime (read-only)
+```
+
+It accepts only an existing authorized decision targeting Codex and blocks uncertain
+workspace evidence as defense in depth. It does not build handoffs, re-evaluate
+routing, parse Markdown, persist artifacts, or wire escalation into `car task`.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

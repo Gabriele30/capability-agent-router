@@ -83,6 +83,9 @@ Project: CAR — Capability Agent Router
 - Application-layer Codex execution requires an explicit `CodexExecutionPolicy` and
   is disabled by default. It forwards an in-memory handoff to the read-only runtime;
   it must not parse Markdown, persist handoffs, inspect credentials, or wire `car task`.
+- The post-failure coordinator may invoke that service only for an existing,
+  authorized `EscalationDecision` targeting Codex and a non-uncertain `CodexHandoff`.
+  It must fail closed without runtime calls for all other states.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,
