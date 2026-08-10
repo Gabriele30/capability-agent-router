@@ -1,5 +1,6 @@
 """Pure handoff construction plus explicit, repository-local persistence."""
 
+import tempfile
 from pathlib import Path
 
 from car.coding.models import CodingAttemptResult, CodingTaskContext
@@ -226,7 +227,8 @@ def write_codex_handoff(repository_root: Path, handoff: CodexHandoff) -> Path:
     target = context / "current-task.md"
     if target.is_symlink() or not target.resolve(strict=False).is_relative_to(root):
         raise ValueError("unsafe handoff target")
-    temporary = context / "current-task.tmp"
-    temporary.write_text(render_codex_handoff_markdown(handoff), encoding="utf-8")
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=context, delete=False) as file:
+        file.write(render_codex_handoff_markdown(handoff))
+        temporary = Path(file.name)
     temporary.replace(target)
     return target

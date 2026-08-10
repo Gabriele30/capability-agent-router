@@ -177,6 +177,13 @@ stops after the first failure. Empty, timeout, unavailable-executable, and non-z
 checks all fail closed and trigger target-scoped rollback. Verification currently has
 no CLI coding integration or escalation path.
 
+For a future `GEMINI_TO_CODEX` escalation, CAR can retain bounded evidence after
+verification failure and rollback: routing, proposal summary, attempted diffs,
+executed checks, and rollback status form a `CodexHandoff`. The handoff is data only
+and may be explicitly written to `.car-context/current-task.md`; it does not invoke
+Codex. A rollback failure marks the workspace uncertain and blocks automatic future
+escalation.
+
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.
