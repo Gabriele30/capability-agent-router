@@ -9,6 +9,11 @@ class FakeError(Exception):
         self.code, self.message = code, message
 
 
+class StatusCodeError(Exception):
+    def __init__(self, status_code, message=""):
+        self.status_code, self.message = status_code, message
+
+
 @pytest.mark.parametrize(
     "code,kind",
     [
@@ -40,6 +45,16 @@ def test_http_mapping(code, kind):
 )
 def test_429_mapping(message, kind):
     assert _map_gemini_error(FakeError(429, message)).kind.value == kind
+
+
+def test_status_code_404_maps_to_model_not_found():
+    assert _map_gemini_error(StatusCodeError(404, "noise")).kind.value == "model_not_found"
+
+
+def test_status_code_takes_precedence_when_code_is_also_present():
+    error = StatusCodeError(404, "noise")
+    error.code = 500
+    assert _map_gemini_error(error).kind.value == "model_not_found"
 
 
 def test_retryability_and_secret_safety():

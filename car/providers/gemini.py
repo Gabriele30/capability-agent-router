@@ -46,7 +46,9 @@ SAFE_MESSAGES = {
 
 
 def _map_gemini_error(error: object) -> ProviderError:
-    code = getattr(error, "code", None)
+    code = getattr(error, "status_code", None)
+    if code is None:
+        code = getattr(error, "code", None)
     message = str(getattr(error, "message", "")).lower()
     if code == 429:
         kind = (
