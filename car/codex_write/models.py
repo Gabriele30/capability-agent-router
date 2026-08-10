@@ -45,6 +45,8 @@ class CodexWriteFailureKind(StrEnum):
     MALFORMED_GIT_STATUS = "malformed_git_status"
     TOTAL_SIZE_EXCEEDED = "total_size_exceeded"
     UNSUPPORTED_REPOSITORY_STATE = "unsupported_repository_state"
+    PROJECTION_FAILED = "projection_failed"
+    PROJECTION_VALIDATION_FAILED = "projection_validation_failed"
 
 
 class CodexWriteAuthorization(_StrictModel):
@@ -61,6 +63,8 @@ class CodexWritePolicy(_StrictModel):
     max_file_bytes: int = Field(default=64 * 1024, ge=1, le=1024 * 1024)
     max_baseline_files: int = Field(default=500, ge=1, le=2_000)
     max_baseline_total_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=32 * 1024 * 1024)
+    max_projection_files: int = Field(default=50, ge=1, le=500)
+    max_projection_total_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=32 * 1024 * 1024)
     allow_create: bool = True
     allow_modify: bool = True
     allow_delete: bool = False

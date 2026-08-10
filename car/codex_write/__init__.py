@@ -19,6 +19,11 @@ from .models import (
     baseline_matches,
     validate_change_set,
 )
+from .projection import (
+    BaselineProjectionService,
+    ProjectedIsolatedWorkspace,
+    ProjectionResult,
+)
 from .workspace import (
     IsolatedCodexWorkspace,
     IsolatedWorkspaceManager,
@@ -28,6 +33,7 @@ from .workspace import (
 
 __all__ = [
     "BaselineCaptureResult",
+    "BaselineProjectionService",
     "BaselineRevalidationResult",
     "CodexChangeSet",
     "CodexChangeValidationResult",
@@ -41,6 +47,8 @@ __all__ = [
     "validate_change_set",
     "IsolatedCodexWorkspace",
     "IsolatedWorkspaceManager",
+    "ProjectedIsolatedWorkspace",
+    "ProjectionResult",
     "SourceBaseline",
     "SourceBaselineService",
     "WorkspaceCleanupResult",

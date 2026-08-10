@@ -130,13 +130,16 @@ def test_unborn_head_and_cleanup_failure_are_structured(tmp_path: Path):
 
 def test_worktree_uses_exact_head_oid(git_repository: Path):
     manager = IsolatedWorkspaceManager()
-    created = manager.create(git_repository)
+    head = _git(git_repository, "rev-parse", "HEAD").strip()
+    created = manager.create(git_repository, revision=head)
     assert created.workspace is not None
     workspace = created.workspace
     try:
         assert workspace.revision == _git(git_repository, "rev-parse", "HEAD").strip()
     finally:
         assert manager.cleanup(workspace).removed
+    rejected = manager.create(git_repository, revision="0" * 40)
+    assert rejected.failure_kind == CodexWriteFailureKind.INVALID_BASELINE
 
 
 def test_workspace_boundary_does_not_import_providers_or_codex_runtime():

@@ -156,7 +156,7 @@ not invoke a live Codex execution.
 
 - Current: 0.5 — explicit, verified Gemini coding execution with rollback and
   optional read-only Codex diagnostics.
-- Next: 5E2-B controlled baseline projection for dirty worktrees, while keeping
-  the source repository untouched.
+- Next: 5E3-A controlled Codex write runtime foundation, bounded to an isolated
+  projected workspace and still without real-repository application.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.

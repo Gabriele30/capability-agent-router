@@ -96,13 +96,41 @@ HEAD worktree + validated projection of WORKING TREE state
 Index metadata remains a concurrency-protection signal; it is not future Codex
 content.
 
+## 5E2-B2: implemented safe baseline projection
+
+CAR now composes a B1 baseline with a 5E2-A detached worktree created from the
+baseline's exact `HEAD` OID. It revalidates the source before reading any
+working-tree content, projects only the required working-tree overlay into the
+disposable workspace, validates each destination identity, and revalidates the
+source again before returning a usable `ProjectedIsolatedWorkspace`.
+
+The projected workspace is:
+
+```text
+baseline HEAD + authorized current WORKING TREE overlay
+```
+
+Dirty tracked files are copied byte-for-byte from the source filesystem; staged
+metadata is never copied from the source index. A user-deleted tracked file is
+removed only from the temporary workspace. Untracked files are excluded by default
+and can be projected only through an explicit repository-relative authorization
+list that must match the captured baseline. Protected paths and projected symlinks
+fail closed. No `git add` is run in the isolated workspace.
+
+Any pre- or post-projection baseline mismatch makes the workspace unusable and it
+is disposed through the owned worktree lifecycle. A partially projected workspace
+is likewise disposable rather than finalized. The user repository, its index,
+branch, HEAD, and files remain untouched.
+
+No Codex execution, provider call, delta extraction, or real-repository apply is
+enabled.
+
 ## Next sequence
 
-1. **5E2-B2 — Safe Dirty/Staged/Untracked Projection.** It will create the HEAD
-   worktree, revalidate a B1 baseline before projection, overlay working-tree
-   content, apply user deletions only in isolation, and selectively copy bounded
-   safe untracked files. It will never copy protected local state, mutate the
-   source repository, or invoke Codex.
+1. **5E3-A — Controlled Codex Write Runtime Foundation.** It will introduce a
+   runtime boundary separate from `LocalCodexRuntime` that may operate only inside
+   a `ProjectedIsolatedWorkspace`; it will not yet accept deltas or apply changes
+   to the real repository.
 2. **5E3 — Controlled Codex Coding Execution in Isolation**
 3. **5E4 — Exact Delta Extraction and Validation**
 4. **5E5 — CAR-controlled Apply, Verification, and Rollback**

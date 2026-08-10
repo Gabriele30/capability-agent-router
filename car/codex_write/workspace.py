@@ -8,6 +8,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from re import fullmatch
 from uuid import uuid4
 
 from .models import CodexWriteFailureKind
@@ -81,10 +82,20 @@ class IsolatedWorkspaceManager:
         self._timeout_seconds = timeout_seconds
         self._owned: dict[str, IsolatedCodexWorkspace] = {}
 
-    def create(self, repository: Path) -> WorkspaceCreationResult:
-        root, revision, failure = self._resolve_source(repository)
+    def create(self, repository: Path, revision: str | None = None) -> WorkspaceCreationResult:
+        root, current_revision, failure = self._resolve_source(repository)
         if failure is not None:
             return failure
+        if revision is not None:
+            if fullmatch(r"[0-9a-f]{40,64}", revision) is None or revision != current_revision:
+                return WorkspaceCreationResult(
+                    created=False,
+                    failure_kind=CodexWriteFailureKind.INVALID_BASELINE,
+                    message="explicit workspace revision is not the current full HEAD OID",
+                )
+        else:
+            revision = current_revision
+        assert root is not None and revision is not None
         parent = Path(tempfile.mkdtemp(prefix="car-codex-worktree-", dir=None)).resolve()
         workspace_path = parent / "workspace"
         if _is_within(root, parent):
