@@ -71,7 +71,15 @@ class FakeEngine:
         self.timed_out = timed_out
 
     def verify(self, plan, stop_on_failure=True):
-        checks = [CommandResult(command=plan.commands[0], timed_out=True)] if self.timed_out else []
+        checks = []
+        if self.status == VerificationStatus.FAILED:
+            checks = [
+                CommandResult(
+                    command=plan.commands[0],
+                    exit_code=None if self.timed_out else 1,
+                    timed_out=self.timed_out,
+                )
+            ]
         return VerificationResult(status=self.status, checks=checks, message="test")
 
 
