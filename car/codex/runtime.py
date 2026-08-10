@@ -219,12 +219,12 @@ class LocalCodexRuntime:
 def _execution_argv(executable: str) -> list[str]:
     return [
         executable,
+        "--ask-for-approval",
+        "never",
         "exec",
         "--ephemeral",
         "--sandbox",
         "read-only",
-        "--ask-for-approval",
-        "never",
         READ_ONLY_INSTRUCTION,
     ]
 

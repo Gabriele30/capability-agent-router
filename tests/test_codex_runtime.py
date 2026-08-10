@@ -168,13 +168,15 @@ def test_execute_builds_read_only_argv_and_sends_handoff_via_stdin(
     assert result.succeeded and result.final_message == "Corrective plan"
     assert argv[:7] == [
         executable,
+        "--ask-for-approval",
+        "never",
         "exec",
         "--ephemeral",
         "--sandbox",
         "read-only",
-        "--ask-for-approval",
-        "never",
     ]
+    assert argv.index("--ask-for-approval") < argv.index("exec")
+    assert argv[:3] != [executable, "exec", "--ask-for-approval"]
     assert argv[-1] == READ_ONLY_INSTRUCTION
     assert not any(
         flag in argv for flag in ("workspace-write", "danger-full-access", "--yolo", "--full-auto")
