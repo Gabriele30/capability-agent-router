@@ -86,6 +86,9 @@ Project: CAR — Capability Agent Router
 - The post-failure coordinator may invoke that service only for an existing,
   authorized `EscalationDecision` targeting Codex and a non-uncertain `CodexHandoff`.
   It must fail closed without runtime calls for all other states.
+- Verified-outcome composition must only consume existing structured evidence. It must
+  not rerun verification, apply patches, call Gemini, persist a handoff, or wire the
+  read-only Codex flow into `car task`.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

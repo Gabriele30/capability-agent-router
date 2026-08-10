@@ -135,6 +135,27 @@ It accepts only an existing authorized decision targeting Codex and blocks uncer
 workspace evidence as defense in depth. It does not build handoffs, re-evaluate
 routing, parse Markdown, persist artifacts, or wire escalation into `car task`.
 
+Milestone 5C4 composes an already verified coding outcome without repeating any
+earlier work:
+
+```text
+Verified coding outcome
+  ↓
+Post-failure preparation
+  ↓
+EscalationDecision + CodexHandoff
+  ↓
+Post-failure pipeline coordinator
+  ↓
+Read-only Codex escalation coordinator
+  ↓
+CodexExecutionService → LocalCodexRuntime
+```
+
+It consumes structured evidence only. It does not call Gemini, apply a new patch,
+rerun verification, persist `.car-context`, or connect the flow to `car task`; Codex
+remains read-only throughout.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and
