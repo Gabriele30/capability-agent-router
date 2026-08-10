@@ -107,6 +107,10 @@ Project: CAR — Capability Agent Router
   require explicit per-invocation consent, require selected regular files and a
   CAR-controlled verification preset, and leave `car task` unchanged. Codex analysis
   remains an independently opted-in read-only diagnostic fallback.
+- Live CLI coding-flow validation is opt-in only through
+  `CAR_RUN_LIVE_CODING_FLOW_TESTS=1`. It uses a synthetic temporary Git repository,
+  existing local Gemini configuration, and the real `car execute` path; standard CI
+  must never enable it.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

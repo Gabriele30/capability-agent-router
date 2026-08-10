@@ -233,6 +233,13 @@ confirmation to no. `--yes` authorizes only the current invocation. Optional
 is still not a coding-task success. The first CLI path does not authorize CREATE
 targets or discover files automatically.
 
+Milestone 5D2-C1 validates the Gemini success path through the real public CLI only
+when `CAR_RUN_LIVE_CODING_FLOW_TESTS=1` is already set. The test creates a synthetic
+temporary Git repository with a localized failing calculator test, invokes `car execute`
+with explicit file scope, `--verify pytest`, and `--yes`, then checks the verified
+modification. Standard test runs skip this integration test before provider creation,
+health checks, or network activity.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

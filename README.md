@@ -134,7 +134,8 @@ pytest
 ```
 
 Standard tests are offline-first. Live Gemini validation is explicit opt-in and
-is not enabled in CI.
+is not enabled in CI. The end-to-end `car execute` coding-flow validation requires
+`CAR_RUN_LIVE_CODING_FLOW_TESTS=1` and uses a synthetic temporary repository.
 
 ## Roadmap
 
