@@ -47,6 +47,11 @@ Project: CAR — Capability Agent Router
   its final route is L0. Provider classification is advisory, never coding execution.
 - Provider status commands are local-only; never probe provider networks or
   external Codex authentication merely to display status.
+- Keep coding-provider proposals separate from classification and routing.
+  Providers propose structured code-change data only; CAR owns validation,
+  application, verification, rollback, and all command selection.
+- Never apply a coding proposal or execute provider-suggested commands without
+  an explicitly implemented, CAR-controlled safe-apply milestone.
 - Live provider tests must remain explicit opt-in and never run in standard CI.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.

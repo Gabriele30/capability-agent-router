@@ -90,6 +90,23 @@ Future work may add more L0 tools, Gemini coding execution, Codex handoff and
 runtime integration, and verification-driven escalation. Provider classification
 will remain advisory rather than the sole routing authority.
 
+The future coding boundary is deliberately separate from routing:
+
+```text
+Routing
+ ↓
+CodingProvider
+ ↓
+Structured CodingProposal
+ ↓
+future Safe Apply
+ ↓
+future Verification
+```
+
+A coding provider proposes changes; it never directly writes repository files.
+CAR owns validation, application, verification, and rollback.
+
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.
