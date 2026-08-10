@@ -11,6 +11,7 @@ from car.coding.models import (
     FileChangeOperation,
     ProposedFileChange,
 )
+from car.coding.verification import CodingVerificationCoordinator, CodingVerificationResult
 
 __all__ = [
     "CodingAttemptResult",
@@ -20,6 +21,8 @@ __all__ = [
     "CodingProvider",
     "CodingProviderFailure",
     "CodingTaskContext",
+    "CodingVerificationCoordinator",
+    "CodingVerificationResult",
     "FileChangeOperation",
     "GeminiCodingProvider",
     "ProposedFileChange",

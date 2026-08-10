@@ -161,6 +161,22 @@ implementation accepts UTF-8 text with a uniform LF or CRLF style and preserves
 that style for MODIFY; CREATE uses UTF-8 LF. Verification itself, CLI coding
 integration, and provider-triggered application remain planned.
 
+Applied coding transactions are finalized only through CAR-controlled verification:
+
+```text
+CodingProposal → Patch Validation → Safe Apply → Applied Transaction
+                                               ↓
+                                        CAR Verification
+                                        ├── PASS → finalize
+                                        └── FAIL → rollback
+```
+
+The coding model never supplies executable verification commands. CAR accepts a
+repository-scoped plan of allowlisted structured commands, runs checks in order, and
+stops after the first failure. Empty, timeout, unavailable-executable, and non-zero
+checks all fail closed and trigger target-scoped rollback. Verification currently has
+no CLI coding integration or escalation path.
+
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.

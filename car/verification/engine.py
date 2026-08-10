@@ -8,9 +8,16 @@ class VerificationEngine:
     def __init__(self, runner: CommandRunner | None = None) -> None:
         self.runner = runner or CommandRunner()
 
-    def verify(self, plan: VerificationPlan) -> VerificationResult:
-        checks = [self.runner.run(command) for command in plan.commands]
-        if all(check.exit_code == 0 for check in checks):
+    def verify(
+        self, plan: VerificationPlan, *, stop_on_failure: bool = False
+    ) -> VerificationResult:
+        checks = []
+        for command in plan.commands:
+            check = self.runner.run(command)
+            checks.append(check)
+            if stop_on_failure and check.exit_code != 0:
+                break
+        if checks and all(check.exit_code == 0 for check in checks):
             return VerificationResult(
                 status=VerificationStatus.PASSED, checks=checks, message="verified"
             )

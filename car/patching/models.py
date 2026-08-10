@@ -80,6 +80,7 @@ class PatchTransactionState(StrEnum):
     APPLIED = "applied"
     ROLLED_BACK = "rolled_back"
     FAILED = "failed"
+    FINALIZED = "finalized"
 
 
 class PatchViolation(BaseModel):

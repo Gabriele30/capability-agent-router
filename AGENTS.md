@@ -67,6 +67,9 @@ Project: CAR — Capability Agent Router
   target before the first mutation, use strict hunk context (never fuzzy patching),
   and rollback only paths CAR actually wrote; never use shell, `git apply`, or
   repository-wide restore for model-generated changes.
+- Verification commands are selected and executed by CAR, never by a coding
+  provider or proposal. Verify only an applied transaction: finalize on every
+  passing CAR-controlled check, otherwise stop at first failure and rollback.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

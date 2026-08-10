@@ -64,12 +64,14 @@ class PatchApplyTransaction:
             return True
         except (OSError, ValueError):
             self.result.rollback_failure_kind = PatchApplyFailureKind.ROLLBACK_FAILED
+            self.state = PatchTransactionState.FAILED
             return False
 
     def finalize(self) -> None:
         """Discard the in-memory rollback handle after a future verification success."""
         if self.state == PatchTransactionState.APPLIED:
             self._snapshot = None
+            self.state = PatchTransactionState.FINALIZED
 
 
 class SafePatchApplier:

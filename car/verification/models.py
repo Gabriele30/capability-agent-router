@@ -14,7 +14,7 @@ class VerificationStatus(StrEnum):
 
 
 class VerificationPlan(BaseModel):
-    commands: list[CommandSpec] = Field(min_length=1)
+    commands: list[CommandSpec] = Field(default_factory=list)
 
 
 class VerificationResult(BaseModel):
