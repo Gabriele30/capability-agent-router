@@ -176,6 +176,24 @@ It does not select files, generate plans, modify CLI behavior, invoke Codex, per
 artifacts, or turn provider output into a command. The transaction and snapshot
 ownership remain entirely inside the existing safe-patch boundary.
 
+Milestone 5D1-B adds the explicit authorization boundary above that internal flow:
+
+```text
+Explicit CodingPipelineExecutionPolicy (disabled by default)
+  ↓
+CodingPipelineExecutionService
+  ↓
+Internal Coding Pipeline
+  ↓
+proposal → validate → apply → verify
+  ├── PASS → finalize
+  └── FAIL → rollback
+```
+
+The service returns the nested structured pipeline result and delegates at most once
+when explicitly enabled. It does not plan verification, select files, retry, fall
+back, persist state, change CLI behavior, or escalate failures to Codex.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

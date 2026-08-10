@@ -11,6 +11,12 @@ from car.application.coding import (
     CodingPipelineResult,
     execute_coding_pipeline,
 )
+from car.application.coding_execution import (
+    CodingPipelineApplicationFailureKind,
+    CodingPipelineApplicationResult,
+    CodingPipelineExecutionPolicy,
+    execute_authorized_coding_pipeline,
+)
 from car.application.escalation import (
     CodexEscalationExecutionFailureKind,
     CodexEscalationExecutionResult,
@@ -36,4 +42,8 @@ __all__ = [
     "CodingPipelineOutcome",
     "CodingPipelineResult",
     "execute_coding_pipeline",
+    "CodingPipelineApplicationFailureKind",
+    "CodingPipelineApplicationResult",
+    "CodingPipelineExecutionPolicy",
+    "execute_authorized_coding_pipeline",
 ]

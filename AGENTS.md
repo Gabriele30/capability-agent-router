@@ -93,6 +93,9 @@ Project: CAR — Capability Agent Router
   provider proposal with CAR-owned validation, safe application, and verification.
   It must remain separate from `car task`, Codex escalation, persistence, and command
   selection; only the patch applier may write target files after validation.
+- Coding-pipeline execution requires an explicit application policy and is disabled
+  by default. This gate may delegate once to the internal pipeline but must not add
+  retries, fallbacks, Codex escalation, automatic planning, persistence, or CLI wiring.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,
