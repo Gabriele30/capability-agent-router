@@ -154,8 +154,9 @@ not invoke a live Codex execution.
 
 ## Roadmap
 
-- Current: 0.4 — routing intelligence.
-- Next: broaden explicit coding execution coverage while keeping verification,
-  rollback, and read-only Codex diagnostics under user authorization.
+- Current: 0.5 — explicit, verified Gemini coding execution with rollback and
+  optional read-only Codex diagnostics.
+- Next: broaden explicit execution coverage while keeping verification, rollback,
+  and user authorization intact.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.

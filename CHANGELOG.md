@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.5.0] - 2026-08-10
 
 ### Added
 
@@ -8,6 +8,17 @@
   CAR-controlled patch validation, verification, and rollback.
 - Optional Gemini-to-Codex failure handoff with ephemeral read-only Codex
   diagnostics; a successful diagnostic never resolves the coding task.
+- Windows resolved-executable support and current Codex CLI global-option ordering
+  for the local read-only runtime.
+- Compact structured execution-result presentation for `car execute`.
+
+### Safety
+
+- Transactional patch application and verification-gated finalization preserve
+  pre-existing user state and roll back failed verified attempts.
+- Verification presets remain CAR-controlled; pytest verification avoids new cache
+  and bytecode artifacts in the repository.
+- Codex uses the user's existing local authentication only and remains read-only.
 
 ### Validation
 

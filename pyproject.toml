@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capability-agent-router"
-version = "0.4.0"
+version = "0.5.0"
 description = "Capability-aware orchestration for software engineering agents."
 readme = "README.md"
 requires-python = ">=3.12"
