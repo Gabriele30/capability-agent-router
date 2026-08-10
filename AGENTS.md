@@ -72,7 +72,8 @@ Project: CAR — Capability Agent Router
   passing CAR-controlled check, otherwise stop at first failure and rollback.
 - Future Codex escalation receives only bounded, provider-neutral failure evidence.
   It must never execute automatically, receive credentials, source dumps, or an
-  untrusted output path; handoff persistence is explicit and fixed to `.car-context`.
+  untrusted output path; it must also exclude snapshot and environment dumps.
+  Handoff persistence is explicit and fixed to `.car-context`.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

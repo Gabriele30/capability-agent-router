@@ -181,8 +181,9 @@ For a future `GEMINI_TO_CODEX` escalation, CAR can retain bounded evidence after
 verification failure and rollback: routing, proposal summary, attempted diffs,
 executed checks, and rollback status form a `CodexHandoff`. The handoff is data only
 and may be explicitly written to `.car-context/current-task.md`; it does not invoke
-Codex. A rollback failure marks the workspace uncertain and blocks automatic future
-escalation.
+Codex. Evidence is bounded and excludes repository roots, source contents, snapshot
+state, environment values, and credentials. A rollback failure marks the workspace
+uncertain and blocks automatic future escalation.
 
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before

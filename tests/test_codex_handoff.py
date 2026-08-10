@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from car.coding.models import (
     CodingAttemptResult,
@@ -14,7 +17,12 @@ from car.coding.models import (
     ProposedFileChange,
 )
 from car.coding.verification import CodingVerificationFailureKind, CodingVerificationResult
-from car.escalation.handoff import build_codex_handoff, render_codex_handoff_markdown
+from car.escalation.handoff import (
+    build_codex_handoff,
+    decide_escalation,
+    render_codex_handoff_markdown,
+    write_codex_handoff,
+)
 from car.escalation.models import HandoffPolicy
 from car.execution.models import CommandResult, CommandSpec
 from car.patching.apply import PatchApplyTransaction
@@ -133,6 +141,21 @@ def _failed_verification(*, stdout: str = "", stderr: str = "") -> CodingVerific
         failure_kind=CodingVerificationFailureKind.CHECK_FAILED,
         message="verification failed",
     )
+
+
+def _tree_bytes(root: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    }
+
+
+def _reject_subprocess(monkeypatch) -> None:
+    def fail(*args, **kwargs):
+        raise AssertionError("escalation boundary must not execute subprocesses")
+
+    monkeypatch.setattr(subprocess, "run", fail)
 
 
 def test_handoff_bounds_patch_evidence_and_selected_files(tmp_path: Path):
@@ -280,3 +303,113 @@ def test_handoff_keeps_bounded_useful_evidence_without_private_data(tmp_path: Pa
         "STDOUT_END_SHOULD_NOT_APPEAR",
     ):
         assert private_value not in markdown
+
+
+def test_writer_does_not_follow_preexisting_temporary_artifact(tmp_path: Path):
+    context = tmp_path / ".car-context"
+    context.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"OUTSIDE_MUST_REMAIN_UNCHANGED")
+    artifact = context / "previous-temporary-artifact"
+    try:
+        artifact.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(str(error))
+
+    written = write_codex_handoff(tmp_path, _build_handoff(tmp_path))
+
+    assert written == context / "current-task.md"
+    assert written.is_file() and not written.is_symlink()
+    assert outside.read_bytes() == b"OUTSIDE_MUST_REMAIN_UNCHANGED"
+    assert artifact.is_symlink()
+
+
+def test_writer_rejects_current_task_symlink_without_touching_target(tmp_path: Path):
+    context = tmp_path / ".car-context"
+    context.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"OUTSIDE_MUST_REMAIN_UNCHANGED")
+    target = context / "current-task.md"
+    try:
+        target.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(str(error))
+
+    with pytest.raises(ValueError, match="unsafe handoff target"):
+        write_codex_handoff(tmp_path, _build_handoff(tmp_path))
+
+    assert target.is_symlink()
+    assert outside.read_bytes() == b"OUTSIDE_MUST_REMAIN_UNCHANGED"
+
+
+def test_writer_rejects_context_symlink_without_touching_outside(tmp_path: Path):
+    outside = tmp_path / "outside-context"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_bytes(b"OUTSIDE_MUST_REMAIN_UNCHANGED")
+    try:
+        (tmp_path / ".car-context").symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(str(error))
+
+    with pytest.raises(ValueError, match="unsafe CAR context directory"):
+        write_codex_handoff(tmp_path, _build_handoff(tmp_path))
+
+    assert sentinel.read_bytes() == b"OUTSIDE_MUST_REMAIN_UNCHANGED"
+
+
+def test_writer_uses_only_fixed_context_path(tmp_path: Path):
+    value = _build_handoff(tmp_path)
+    value.task = "../../untrusted-task-name"
+    value.coding_attempt.provider = "../../untrusted-provider"
+    value.selected_files = ["../../untrusted-file"]
+
+    written = write_codex_handoff(tmp_path, value)
+
+    assert written == tmp_path / ".car-context" / "current-task.md"
+    assert set(_tree_bytes(tmp_path)) == {".car-context/current-task.md"}
+
+
+def test_builder_is_read_only_and_never_runs_subprocess(tmp_path: Path, monkeypatch):
+    (tmp_path / "tracked.txt").write_bytes(b"original")
+    before = _tree_bytes(tmp_path)
+    _reject_subprocess(monkeypatch)
+
+    _build_handoff(tmp_path)
+
+    assert _tree_bytes(tmp_path) == before
+
+
+def test_renderer_is_read_only_and_never_runs_subprocess(tmp_path: Path, monkeypatch):
+    (tmp_path / "tracked.txt").write_bytes(b"original")
+    value = _build_handoff(tmp_path)
+    before = _tree_bytes(tmp_path)
+    _reject_subprocess(monkeypatch)
+
+    render_codex_handoff_markdown(value)
+
+    assert _tree_bytes(tmp_path) == before
+
+
+def test_escalation_decision_is_read_only_and_never_runs_subprocess(tmp_path: Path, monkeypatch):
+    (tmp_path / "tracked.txt").write_bytes(b"original")
+    value = _build_handoff(tmp_path, verification=_failed_verification())
+    before = _tree_bytes(tmp_path)
+    _reject_subprocess(monkeypatch)
+
+    decision = decide_escalation(value)
+
+    assert decision.should_escalate and decision.target == Route.CODEX
+    assert _tree_bytes(tmp_path) == before
+
+
+def test_escalation_module_stays_provider_and_runtime_independent():
+    package = Path(build_codex_handoff.__code__.co_filename).parent
+    source = "\n".join(path.read_text(encoding="utf-8") for path in package.glob("*.py"))
+    for forbidden in ("google.genai", "GeminiCodingProvider", "codex exec", "subprocess"):
+        assert forbidden not in source
+
+
+def test_car_context_remains_gitignored():
+    gitignore = Path(__file__).parents[1] / ".gitignore"
+    assert ".car-context/" in gitignore.read_text(encoding="utf-8").splitlines()
