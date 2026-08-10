@@ -194,6 +194,21 @@ The service returns the nested structured pipeline result and delegates at most 
 when explicitly enabled. It does not plan verification, select files, retry, fall
 back, persist state, change CLI behavior, or escalate failures to Codex.
 
+Milestone 5D1-C composes an actual verified coding failure with the existing
+post-failure and read-only Codex boundaries:
+
+```text
+Explicit coding policy → Gemini coding pipeline
+  ├── PASS → coding task done
+  └── FAIL → rollback → post-failure evidence
+                       ├── no authorized escalation → stop
+                       └── GEMINI_TO_CODEX → Codex read-only diagnostic
+```
+
+Only verified failure evidence enters this path. A successful Codex diagnostic does
+not mean that the coding task is fixed: its top-level result remains unsuccessful,
+the workspace remains rolled back, and no new patch is requested or applied.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

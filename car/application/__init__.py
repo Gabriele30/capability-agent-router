@@ -17,6 +17,7 @@ from car.application.coding_execution import (
     CodingPipelineExecutionPolicy,
     execute_authorized_coding_pipeline,
 )
+from car.application.coding_flow import CodingFlowOutcome, CodingFlowResult, execute_coding_flow
 from car.application.escalation import (
     CodexEscalationExecutionFailureKind,
     CodexEscalationExecutionResult,
@@ -46,4 +47,7 @@ __all__ = [
     "CodingPipelineApplicationResult",
     "CodingPipelineExecutionPolicy",
     "execute_authorized_coding_pipeline",
+    "CodingFlowOutcome",
+    "CodingFlowResult",
+    "execute_coding_flow",
 ]

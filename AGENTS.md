@@ -96,6 +96,10 @@ Project: CAR — Capability Agent Router
 - Coding-pipeline execution requires an explicit application policy and is disabled
   by default. This gate may delegate once to the internal pipeline but must not add
   retries, fallbacks, Codex escalation, automatic planning, persistence, or CLI wiring.
+- The internal coding flow may pass only already-verified failed coding evidence to
+  the existing post-failure composition. A successful read-only Codex diagnosis is
+  never a coding-task success and must not trigger a second patch, retry, persistence,
+  or CLI action.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,
