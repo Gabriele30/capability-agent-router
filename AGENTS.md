@@ -74,6 +74,9 @@ Project: CAR — Capability Agent Router
   It must never execute automatically, receive credentials, source dumps, or an
   untrusted output path; it must also exclude snapshot and environment dumps.
   Handoff persistence is explicit and fixed to `.car-context`.
+- The local Codex runtime uses only the installed Codex CLI and its existing
+  authentication. It must never read credentials or auth files, request an API key,
+  or perform automatic login. Its initial execution mode is ephemeral and read-only.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

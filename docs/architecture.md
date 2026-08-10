@@ -84,6 +84,15 @@ routing, verified L0 execution, optional Gemini classification, lazy consultatio
 and conservative fusion. Gemini/Codex coding execution and Gemini-to-Codex
 handoff remain planned; the current provider integration is classification-only.
 
+Milestone 5C2-A adds an isolated local Codex runtime foundation for future handoff
+diagnostics. It renders an existing `CodexHandoff` to stdin and invokes the installed
+Codex CLI with `codex exec --ephemeral`, a read-only sandbox, and no interactive
+approval. CAR does not own Codex credentials: authentication remains delegated to the
+installed CLI, no OpenAI API key is required, and credential files are never read.
+This foundation returns only a bounded final diagnostic message; it does not modify
+the workspace, persist a handoff automatically, apply patches, or wire execution to
+the CLI.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and
