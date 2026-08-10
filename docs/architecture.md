@@ -93,6 +93,11 @@ This foundation returns only a bounded final diagnostic message; it does not mod
 the workspace, persist a handoff automatically, apply patches, or wire execution to
 the CLI.
 
+An integration validation is available only with `CAR_RUN_LIVE_CODEX_TESTS=1`. It
+uses a synthetic temporary Git repository and a synthetic handoff to exercise the
+same read-only runtime transport. Standard test runs never invoke Codex, and the
+live validation neither logs in nor requires an API key.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

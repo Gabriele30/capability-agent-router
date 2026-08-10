@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -284,3 +287,28 @@ def test_runtime_source_has_no_credential_files_or_openai_api_access():
     source = (Path.cwd() / source).read_text(encoding="utf-8")
     for forbidden in ("auth.json", "keyring", "openai.OpenAI", "codex login", "workspace-write"):
         assert forbidden not in source
+
+
+@pytest.mark.parametrize(
+    "gemini_flag", ["CAR_RUN_LIVE_GEMINI_TESTS", "CAR_RUN_LIVE_GEMINI_CODING_TESTS"]
+)
+def test_live_codex_gate_is_independent_from_gemini_live_flags(gemini_flag: str):
+    environment = os.environ.copy()
+    environment.pop("CAR_RUN_LIVE_CODEX_TESTS", None)
+    environment[gemini_flag] = "1"
+    live_test = Path(__file__).parent / "integration" / "test_codex_runtime_live.py"
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", str(live_test), "-q"],
+        cwd=Path(__file__).parents[1],
+        env=environment,
+        capture_output=True,
+        check=False,
+        shell=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert completed.returncode in {0, 5}
+    assert "1 skipped" in completed.stdout

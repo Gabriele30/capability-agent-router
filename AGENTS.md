@@ -77,6 +77,9 @@ Project: CAR — Capability Agent Router
 - The local Codex runtime uses only the installed Codex CLI and its existing
   authentication. It must never read credentials or auth files, request an API key,
   or perform automatic login. Its initial execution mode is ephemeral and read-only.
+- Live Codex runtime validation is opt-in only through `CAR_RUN_LIVE_CODEX_TESTS=1`.
+  Standard tests must never invoke Codex; the live test uses only a synthetic Git
+  repository and synthetic handoff, with byte-level workspace checks after execution.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,
