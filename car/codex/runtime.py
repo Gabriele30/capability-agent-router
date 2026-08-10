@@ -110,7 +110,7 @@ class LocalCodexRuntime:
         if executable is None:
             return CodexRuntimeHealth(status=CodexRuntimeHealthStatus.CLI_NOT_FOUND)
         result = self._runner.run(
-            ["codex", "login", "status"],
+            [executable, "login", "status"],
             cwd=Path.cwd(),
             stdin="",
             environment=_child_environment(),
@@ -147,8 +147,14 @@ class LocalCodexRuntime:
                 succeeded=False,
                 failure_kind=_health_failure(health.status),
             )
+        if health.executable is None:
+            return CodexExecutionResult(
+                attempted=False,
+                succeeded=False,
+                failure_kind=CodexRuntimeFailureKind.UNKNOWN_ERROR,
+            )
         result = self._runner.run(
-            _execution_argv(),
+            _execution_argv(health.executable),
             cwd=root,
             stdin=render_codex_handoff_markdown(request.handoff),
             environment=_child_environment(),
@@ -210,9 +216,9 @@ class LocalCodexRuntime:
         )
 
 
-def _execution_argv() -> list[str]:
+def _execution_argv(executable: str) -> list[str]:
     return [
-        "codex",
+        executable,
         "exec",
         "--ephemeral",
         "--sandbox",

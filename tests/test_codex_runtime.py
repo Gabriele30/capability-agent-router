@@ -96,11 +96,14 @@ def _handoff() -> CodexHandoff:
     )
 
 
-def _runtime(results: list[CodexProcessResult], *, policy: CodexRuntimePolicy | None = None):
+def _runtime(
+    results: list[CodexProcessResult],
+    *,
+    executable: str = "C:/tools/codex.exe",
+    policy: CodexRuntimePolicy | None = None,
+):
     runner = FakeCodexRunner(results)
-    return LocalCodexRuntime(
-        runner=runner, which=lambda name: "C:/tools/codex.exe", policy=policy
-    ), runner
+    return LocalCodexRuntime(runner=runner, which=lambda name: executable, policy=policy), runner
 
 
 def _request(root: Path) -> CodexExecutionRequest:
@@ -121,13 +124,14 @@ def test_health_reports_cli_missing_without_starting_process():
     assert runner.calls == []
 
 
-def test_health_reports_ready_after_local_login_status():
-    runtime, runner = _runtime([_ready()])
+@pytest.mark.parametrize("executable", ["C:/Users/test/npm/codex.CMD", "/usr/local/bin/codex"])
+def test_health_reports_ready_after_local_login_status_uses_resolved_executable(executable):
+    runtime, runner = _runtime([_ready()], executable=executable)
 
     health = runtime.health()
 
     assert health.status == CodexRuntimeHealthStatus.READY
-    assert runner.calls[0]["argv"] == ["codex", "login", "status"]
+    assert runner.calls[0]["argv"] == [executable, "login", "status"]
 
 
 @pytest.mark.parametrize(
@@ -146,11 +150,14 @@ def test_health_fails_closed_when_login_status_is_not_ready(status_result, expec
     assert runtime.health().status == expected
 
 
-def test_execute_builds_read_only_argv_and_sends_handoff_via_stdin(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("executable", ["C:/Users/test/npm/codex.CMD", "/usr/local/bin/codex"])
+def test_execute_builds_read_only_argv_and_sends_handoff_via_stdin(
+    tmp_path: Path, monkeypatch, executable: str
+):
     monkeypatch.setenv("OPENAI_API_KEY", "super-secret-openai")
     monkeypatch.setenv("CODEX_API_KEY", "super-secret-codex")
     runtime, runner = _runtime(
-        [_ready(), CodexProcessResult(exit_code=0, stdout="Corrective plan")]
+        [_ready(), CodexProcessResult(exit_code=0, stdout="Corrective plan")], executable=executable
     )
 
     result = runtime.execute(_request(tmp_path))
@@ -160,7 +167,7 @@ def test_execute_builds_read_only_argv_and_sends_handoff_via_stdin(tmp_path: Pat
     stdin = call["stdin"]
     assert result.succeeded and result.final_message == "Corrective plan"
     assert argv[:7] == [
-        "codex",
+        executable,
         "exec",
         "--ephemeral",
         "--sandbox",
@@ -210,6 +217,15 @@ def test_execute_maps_timeout_nonzero_and_empty_output(tmp_path: Path):
         result = runtime.execute(_request(tmp_path))
         assert result.attempted and not result.succeeded
         assert result.failure_kind == expected
+
+
+def test_execute_preserves_executable_not_found_semantics(tmp_path: Path):
+    runtime, _ = _runtime([_ready(), CodexProcessResult(executable_not_found=True)])
+
+    result = runtime.execute(_request(tmp_path))
+
+    assert result.attempted and not result.succeeded
+    assert result.failure_kind == CodexRuntimeFailureKind.CLI_NOT_FOUND
 
 
 def test_execute_bounds_stdout_and_stderr(tmp_path: Path):
