@@ -42,6 +42,9 @@ class CodexWriteFailureKind(StrEnum):
     GIT_TIMEOUT = "git_timeout"
     WORKSPACE_SETUP_FAILED = "workspace_setup_failed"
     WORKSPACE_CLEANUP_FAILED = "workspace_cleanup_failed"
+    MALFORMED_GIT_STATUS = "malformed_git_status"
+    TOTAL_SIZE_EXCEEDED = "total_size_exceeded"
+    UNSUPPORTED_REPOSITORY_STATE = "unsupported_repository_state"
 
 
 class CodexWriteAuthorization(_StrictModel):
@@ -56,6 +59,8 @@ class CodexWritePolicy(_StrictModel):
     enabled: bool = False
     max_files: int = Field(default=10, ge=1, le=100)
     max_file_bytes: int = Field(default=64 * 1024, ge=1, le=1024 * 1024)
+    max_baseline_files: int = Field(default=500, ge=1, le=2_000)
+    max_baseline_total_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=32 * 1024 * 1024)
     allow_create: bool = True
     allow_modify: bool = True
     allow_delete: bool = False
@@ -76,6 +81,12 @@ class CodexFileIdentity(_StrictModel):
     user_dirty: bool = False
     is_binary: bool = False
     is_symlink: bool = False
+    exists: bool = True
+    staged: bool = False
+    unstaged: bool = False
+    untracked: bool = False
+    protected: bool = False
+    symlink_target_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("path")
     @classmethod
@@ -91,6 +102,9 @@ class CodexWorkspaceBaseline(_StrictModel):
     repository_dirty: bool = False
     staged_paths: list[str] = Field(default_factory=list)
     untracked_paths: list[str] = Field(default_factory=list)
+    head_oid: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
+    baseline_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    total_bytes: int = Field(default=0, ge=0)
 
     @field_validator("staged_paths", "untracked_paths")
     @classmethod

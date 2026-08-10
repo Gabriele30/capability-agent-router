@@ -66,13 +66,43 @@ untracked, ignored, or `.car-context` state into the detached worktree.
 No Codex process, provider, network call, delta extraction, patch validation,
 application, verification, or rollback is enabled by this lifecycle.
 
+## 5E2-B1: implemented exact source baseline
+
+CAR now captures a read-only, content-free `SourceBaseline` for the exact source
+working tree. It resolves the full `HEAD` OID, parses NUL-delimited Git porcelain
+v2 status, observes tracked and untracked paths, and records repository-relative
+file identities only: SHA-256, size, file presence, symlink identity, and staged,
+unstaged, and untracked classification. Hashing streams regular-file bytes and the
+serialized model never contains file content or absolute paths.
+
+Revalidation recaptures the same bounded baseline and compares a deterministic
+digest. A changed `HEAD`, content, file presence, untracked set, or index/working
+tree classification yields `CONCURRENT_MODIFICATION`; future application must
+never proceed from that mismatch. Protected local paths are never content-hashed:
+a dirty or untracked protected path fails closed instead. Renames, type changes,
+merge states, submodule ambiguity, unsafe outside symlinks, and unsupported special
+files also fail closed.
+
+Capture and revalidation do not create a worktree, alter source files, Git index,
+branch, HEAD, or Git worktree metadata, and do not call a provider, Codex, network,
+verification, patching, or apply service. This is observation only.
+
+The future isolated workspace will represent user-visible working-tree content:
+
+```text
+HEAD worktree + validated projection of WORKING TREE state
+```
+
+Index metadata remains a concurrency-protection signal; it is not future Codex
+content.
+
 ## Next sequence
 
-1. **5E2-B — Controlled baseline projection for dirty worktrees.** Its boundary
-   is `HEAD` worktree plus safe projection of the current authorized user
-   baseline: dirty tracked contents, staged versus working-tree content, bounded
-   safe untracked files, protected paths, size/file limits, concurrent baseline
-   revalidation, no credential copying, and exact source-baseline semantics.
+1. **5E2-B2 — Safe Dirty/Staged/Untracked Projection.** It will create the HEAD
+   worktree, revalidate a B1 baseline before projection, overlay working-tree
+   content, apply user deletions only in isolation, and selectively copy bounded
+   safe untracked files. It will never copy protected local state, mutate the
+   source repository, or invoke Codex.
 2. **5E3 — Controlled Codex Coding Execution in Isolation**
 3. **5E4 — Exact Delta Extraction and Validation**
 4. **5E5 — CAR-controlled Apply, Verification, and Rollback**
