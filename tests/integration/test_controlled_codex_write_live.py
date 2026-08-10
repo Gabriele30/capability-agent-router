@@ -51,6 +51,24 @@ def _change_sets(
     )
 
 
+def _bounded(value: str | None, maximum: int = 1_000) -> str:
+    if not value:
+        return ""
+    return value[-maximum:]
+
+
+def _runtime_diagnostics(
+    *, result, modified: set[str], created: set[str], deleted: set[str]
+) -> str:
+    """Bounded live-test evidence only; never includes environment or local paths."""
+    return (
+        f"failure={result.failure_kind} exit={result.exit_code} timeout={result.timed_out} "
+        f"final_message={_bounded(result.final_message)!r} "
+        f"stdout={_bounded(result.stdout)!r} stderr={_bounded(result.stderr)!r} "
+        f"modified={sorted(modified)!r} created={sorted(created)!r} deleted={sorted(deleted)!r}"
+    )
+
+
 def test_real_controlled_codex_workspace_write_is_confined(tmp_path: Path, monkeypatch):
     """Live-only: filesystem assertions are test-local, not 5E4 delta acceptance."""
     source = tmp_path / "synthetic-source"
@@ -113,9 +131,8 @@ def test_real_controlled_codex_workspace_write_is_confined(tmp_path: Path, monke
     )
     try:
         result = runtime.execute(request, authorization)
-        diagnostics = (
-            f"failure={result.failure_kind} exit={result.exit_code} timeout={result.timed_out} "
-            f"stdout={result.stdout[-500:]!r} stderr={result.stderr[-500:]!r}"
+        diagnostics = _runtime_diagnostics(
+            result=result, modified=set(), created=set(), deleted=set()
         )
         assert result.attempted and result.process_succeeded, diagnostics
         assert result.final_message and len(result.final_message) <= policy.codex_max_stdout_chars
@@ -125,8 +142,11 @@ def test_real_controlled_codex_workspace_write_is_confined(tmp_path: Path, monke
 
         workspace_after = _snapshot(workspace)
         modified, created, deleted = _change_sets(workspace_before, workspace_after)
-        assert modified == {"calculator.py"}, (modified, created, deleted)
-        assert not created and not deleted
+        filesystem_diagnostics = _runtime_diagnostics(
+            result=result, modified=modified, created=created, deleted=deleted
+        )
+        assert modified == {"calculator.py"}, filesystem_diagnostics
+        assert not created and not deleted, filesystem_diagnostics
         assert "return a + b" in (workspace / "calculator.py").read_text(encoding="utf-8")
         assert (workspace / "unrelated.txt").read_text(encoding="utf-8") == "do not change\n"
         assert _git(workspace, "rev-parse", "HEAD").stdout.strip() == baseline.head_oid
