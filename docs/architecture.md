@@ -98,6 +98,25 @@ uses a synthetic temporary Git repository and a synthetic handoff to exercise th
 same read-only runtime transport. Standard test runs never invoke Codex, and the
 live validation neither logs in nor requires an API key.
 
+Milestone 5C2-C adds an explicit application service above the runtime:
+
+```text
+CodexHandoff
+  ↓
+CodexExecutionService
+  ↓
+explicit disabled-by-default policy
+  ↓
+runtime health
+  ↓
+LocalCodexRuntime (read-only)
+```
+
+The service receives the structured in-memory handoff and an injected runtime; it
+does not parse Markdown or persist `.car-context` artifacts. A ready local runtime
+is required before one execution can occur. This remains separate from `car task`,
+does not retry or alter runtime sandbox settings, and cannot enable workspace writes.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and
