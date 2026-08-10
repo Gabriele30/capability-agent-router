@@ -14,8 +14,9 @@ provider evidence before selecting a route.
 
 ## Project status: Alpha
 
-CAR is under active development. The routing-intelligence layer is usable, while
-L1/L2 coding execution is still being implemented.
+CAR is under active development. Scoped Gemini coding execution is available
+through `car execute` with explicit authorization, CAR-controlled verification,
+and rollback. Codex remains an optional read-only diagnostic fallback.
 
 ## Routing architecture
 
@@ -118,9 +119,10 @@ verification is rolled back. Execution requires per-invocation confirmation (or
 `--yes`), which is never persisted. `--codex-analysis` enables only a read-only
 diagnostic fallback and does not allow Codex to fix files.
 
-Codex is currently a routing target, not an executable CAR provider. Future
-Codex execution will use the locally installed Codex runtime authenticated by the
-user's existing Codex/ChatGPT session; CAR will not require an OpenAI API key.
+Codex currently runs only as an optional read-only diagnostic fallback through the
+locally installed runtime authenticated by the user's existing Codex/ChatGPT
+session. It never writes repository files, and a successful diagnosis never means
+the coding task has been resolved. CAR does not require an OpenAI API key.
 
 ## Safety
 
@@ -138,10 +140,17 @@ pytest
 ```
 
 Standard tests are offline-first. Live Gemini validation is explicit opt-in and
-is not enabled in CI. The end-to-end `car execute` coding-flow validation requires
-`CAR_RUN_LIVE_CODING_FLOW_TESTS=1` and uses a synthetic temporary repository.
-The Gemini-failure-to-read-only-Codex escalation validation is independently gated
-by `CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1` and is never enabled in CI.
+is not enabled in CI. Each live test uses a synthetic repository and requires its
+own explicit flag:
+
+- `CAR_RUN_LIVE_GEMINI_TESTS=1` — Gemini classification transport.
+- `CAR_RUN_LIVE_GEMINI_CODING_TESTS=1` — Gemini coding proposal transport.
+- `CAR_RUN_LIVE_CODING_FLOW_TESTS=1` — verified Gemini coding success through `car execute` (C1, live verified).
+- `CAR_RUN_LIVE_CODEX_TESTS=1` — local read-only Codex runtime.
+- `CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1` — Gemini failure, rollback, and read-only Codex diagnostic flow (C2, live verified).
+
+Without these flags, the standard suite makes no billable provider calls and does
+not invoke a live Codex execution.
 
 ## Roadmap
 

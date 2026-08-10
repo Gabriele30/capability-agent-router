@@ -250,11 +250,18 @@ top level and cannot alter the workspace. Current Gemini transports require
 `google-genai>=2.0.0,<3`; model selection remains local configuration (for example,
 `gemini-3.6-flash`) rather than router policy.
 
+Both 5D2-C1 and 5D2-C2 have been live verified with synthetic repositories. C1
+validated a real Gemini proposal through safe apply and passing pytest verification.
+C2 validated a real Gemini proposal, intentional pytest failure, byte-preserving
+rollback, clean workspace invariants, and real read-only Codex analysis. Codex
+diagnostic success remains explicitly unresolved at the coding-task boundary.
+
 ## Planned
 
-Future work may add more L0 tools, Gemini coding execution, Codex handoff and
-runtime integration, and verification-driven escalation. Provider classification
-will remain advisory rather than the sole routing authority.
+Future work may add more L0 tools and broaden explicit execution coverage while
+preserving CAR-owned validation, verification, rollback, and read-only Codex
+diagnostics. Provider classification will remain advisory rather than the sole
+routing authority.
 
 The future coding boundary is deliberately separate from routing:
 

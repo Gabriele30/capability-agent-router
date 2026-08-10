@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Explicit, scoped Gemini coding execution through `car execute`, with
+  CAR-controlled patch validation, verification, and rollback.
+- Optional Gemini-to-Codex failure handoff with ephemeral read-only Codex
+  diagnostics; a successful diagnostic never resolves the coding task.
+
+### Validation
+
+- Live-verified C1 Gemini success and C2 Gemini failure/rollback/read-only Codex
+  flows, both using synthetic repositories and explicit opt-in test gates.
+
 ## [0.4.0] - 2026-08-09
 
 ### Added
