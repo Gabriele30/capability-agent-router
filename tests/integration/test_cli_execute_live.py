@@ -1,10 +1,12 @@
 """Opt-in real Gemini success validation through the public ``car execute`` command."""
 
+import json
 import os
 import subprocess
 import sys
 from importlib import import_module
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -28,6 +30,119 @@ TASK = (
     "do not create files."
 )
 runner = CliRunner()
+
+
+def _bounded(value: str, limit: int = 500) -> str:
+    """Keep failure diagnostics useful without dumping provider or repository data."""
+    return value if len(value) <= limit else f"{value[:limit]}… [truncated]"
+
+
+def _live_failure_diagnostic(captured: list[Any]) -> str:
+    """Render only structured gateway evidence retained by the real CLI flow."""
+    if not captured:
+        return "No CodingFlowGatewayResult was captured."
+    gateway = captured[-1]
+    flow = gateway.flow_result
+    application = flow.coding if flow else None
+    pipeline = application.pipeline_result if application else None
+    attempt = pipeline.coding_attempt if pipeline else None
+    proposal = attempt.proposal if attempt else None
+    validation = pipeline.patch_validation if pipeline else None
+    apply = pipeline.patch_apply if pipeline else None
+    verification = pipeline.verification if pipeline else None
+    post_failure = flow.post_failure if flow else None
+
+    diagnostic = {
+        "gateway": {
+            "authorized": gateway.authorized,
+            "attempted": gateway.attempted,
+            "succeeded": gateway.succeeded,
+            "failure_kind": _enum_value(gateway.failure_kind),
+        },
+        "coding_flow": {
+            "outcome": _enum_value(flow.outcome) if flow else None,
+            "attempted": flow.attempted if flow else None,
+            "succeeded": flow.succeeded if flow else None,
+        },
+        "pipeline_application": {
+            "attempted": application.attempted if application else None,
+            "succeeded": application.succeeded if application else None,
+            "failure_kind": _enum_value(application.failure_kind) if application else None,
+        },
+        "pipeline": {"outcome": _enum_value(pipeline.outcome) if pipeline else None},
+        "coding_attempt": {
+            "attempted": attempt.attempted if attempt else None,
+            "succeeded": attempt.succeeded if attempt else None,
+            "provider": attempt.provider if attempt else None,
+            "error_kind": _enum_value(attempt.error_kind) if attempt else None,
+            "provider_message": "not retained by CodingAttemptResult",
+            "proposal_present": proposal is not None,
+        },
+        "proposal": {
+            "summary": _bounded(proposal.summary) if proposal else None,
+            "change_count": len(proposal.changes) if proposal else 0,
+            "changes": [
+                {
+                    "operation": change.operation.value,
+                    "path": change.path,
+                    "diff_present": bool(change.patch),
+                    "diff_length": len(change.patch),
+                }
+                for change in proposal.changes
+            ]
+            if proposal
+            else [],
+        },
+        "patch_validation": {
+            "executed": validation is not None,
+            "valid": validation.valid if validation else None,
+            "violations": [
+                {"kind": violation.kind.value, "path": violation.path, "message": violation.summary}
+                for violation in validation.violations
+            ]
+            if validation
+            else [],
+        },
+        "patch_apply": {
+            "executed": apply is not None,
+            "succeeded": apply.succeeded if apply else None,
+            "state": "not retained by PatchApplyResult" if apply else None,
+            "failure_kind": _enum_value(apply.failure_kind) if apply else None,
+            "rollback_failure_kind": _enum_value(apply.rollback_failure_kind) if apply else None,
+        },
+        "verification": {
+            "executed": verification is not None,
+            "passed": verification.passed if verification else None,
+            "rolled_back": verification.rolled_back if verification else None,
+            "failure_kind": _enum_value(verification.failure_kind) if verification else None,
+            "rollback_failure": _enum_value(verification.rollback_failure)
+            if verification
+            else None,
+            "checks": [
+                {
+                    "argv": check.command.args,
+                    "exit_code": check.exit_code,
+                    "timed_out": check.timed_out,
+                    "executable_not_found": check.executable_not_found,
+                    "stdout": _bounded(check.stdout),
+                    "stderr": _bounded(check.stderr),
+                }
+                for check in verification.checks
+            ]
+            if verification
+            else [],
+        },
+        "post_failure": {
+            "outcome": _enum_value(post_failure.outcome) if post_failure else None,
+            "should_escalate": post_failure.escalation.should_escalate if post_failure else None,
+            "codex_execution_attempted": post_failure.attempted_codex if post_failure else None,
+        },
+    }
+    return json.dumps(diagnostic, indent=2, sort_keys=True)
+
+
+def _enum_value(value: Any) -> str | None:
+    return value.value if value is not None else None
 
 
 def _run_pytest(root: Path) -> subprocess.CompletedProcess[str]:
@@ -86,6 +201,15 @@ def test_cli_execute_real_gemini_coding_success(tmp_path: Path, monkeypatch):
         ),
     )
     monkeypatch.chdir(tmp_path)
+    captured_gateway_results = []
+    real_execute = cli.CodingFlowGateway.execute
+
+    def spy_execute(gateway, request, authorization=None):
+        gateway_result = real_execute(gateway, request, authorization)
+        captured_gateway_results.append(gateway_result)
+        return gateway_result
+
+    monkeypatch.setattr(cli.CodingFlowGateway, "execute", spy_execute)
     result = runner.invoke(
         app,
         [
@@ -99,7 +223,7 @@ def test_cli_execute_real_gemini_coding_success(tmp_path: Path, monkeypatch):
         ],
     )
 
-    assert result.exit_code == 0, result.stdout[-2_000:]
+    assert result.exit_code == 0, _live_failure_diagnostic(captured_gateway_results)
     assert "Coding execution preview" in result.stdout
     assert "calculator.py" in result.stdout
     assert "pytest" in result.stdout
