@@ -107,6 +107,11 @@ future Verification
 A coding provider proposes changes; it never directly writes repository files.
 CAR owns validation, application, verification, and rollback.
 
+The Gemini coding adapter sends only an already-selected `CodingTaskContext` to
+the Interactions API and receives a locally validated `CodingProposal`. Repository
+source is untrusted provider input, and no model output is executed or applied by
+the transport layer.
+
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.

@@ -1,6 +1,7 @@
 """Provider-neutral coding proposal contracts; proposal application is intentionally absent."""
 
 from car.coding.base import CodingProvider, CodingProviderFailure
+from car.coding.gemini import GeminiCodingProvider
 from car.coding.models import (
     CodingAttemptResult,
     CodingExecutionPolicy,
@@ -20,5 +21,6 @@ __all__ = [
     "CodingProviderFailure",
     "CodingTaskContext",
     "FileChangeOperation",
+    "GeminiCodingProvider",
     "ProposedFileChange",
 ]

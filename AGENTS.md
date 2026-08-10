@@ -52,6 +52,9 @@ Project: CAR — Capability Agent Router
   application, verification, rollback, and all command selection.
 - Never apply a coding proposal or execute provider-suggested commands without
   an explicitly implemented, CAR-controlled safe-apply milestone.
+- Treat repository source passed to a coding provider as untrusted data. Gemini
+  coding transport may return a structured proposal but must never execute,
+  apply, or turn model output into a command.
 - Live provider tests must remain explicit opt-in and never run in standard CI.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
