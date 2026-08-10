@@ -112,6 +112,13 @@ the Interactions API and receives a locally validated `CodingProposal`. Reposito
 source is untrusted provider input, and no model output is executed or applied by
 the transport layer.
 
+The coding transport uses a single client for each proposal and performs bounded,
+CAR-managed retries only for normalized timeout, rate-limit, and service errors.
+It always makes one final best-effort client close. An optional live coding test is
+separately gated by `CAR_RUN_LIVE_GEMINI_CODING_TESTS=1`; it sends synthetic context
+only and stops after proposal validation. Patch application, verification, CLI coding
+integration, and Codex escalation remain unimplemented.
+
 Technical debt: L0 currently snapshots a broad workspace scope. This is safe
 for the single-execution MVP but may be expensive for large repositories. Before
 L1 patch execution, evaluate target-scoped snapshots and efficient change detection.

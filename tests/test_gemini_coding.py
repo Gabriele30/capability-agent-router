@@ -24,19 +24,20 @@ class FakeError(Exception):
 
 
 class Interactions:
-    def __init__(self, response: Response | Exception) -> None:
+    def __init__(self, response: Response | Exception | list[Response | Exception]) -> None:
         self.response = response
         self.calls: list[dict] = []
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        if isinstance(self.response, Exception):
-            raise self.response
-        return self.response
+        response = self.response.pop(0) if isinstance(self.response, list) else self.response
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class Client:
-    def __init__(self, response: Response | Exception) -> None:
+    def __init__(self, response: Response | Exception | list[Response | Exception]) -> None:
         self.interactions = Interactions(response)
         self.close_count = 0
 
@@ -73,7 +74,7 @@ def payload(**updates) -> str:
     return json.dumps(data)
 
 
-def provider(response: Response | Exception, **config_updates):
+def provider(response: Response | Exception | list[Response | Exception], **config_updates):
     client = Client(response)
     config = GeminiProviderConfig(enabled=True, model="configured-model", **config_updates)
     instance = GeminiCodingProvider(
@@ -149,7 +150,7 @@ def test_invalid_structured_output_is_normalized(output):
     ],
 )
 def test_http_errors_use_existing_provider_taxonomy(error: FakeError, expected: str):
-    instance, client = provider(error)
+    instance, client = provider(error, max_attempts=1)
 
     with pytest.raises(CodingProviderFailure) as failure:
         instance.propose(context())
@@ -159,14 +160,154 @@ def test_http_errors_use_existing_provider_taxonomy(error: FakeError, expected: 
     assert client.close_count == 1
 
 
-def test_no_retry_is_introduced_for_coding_transport():
-    instance, client = provider(FakeError(503), max_attempts=3)
+def test_service_error_retries_with_one_client_and_one_close():
+    client = Client([FakeError(503), Response(payload())])
+    client_creations = []
+    delays = []
+    instance = GeminiCodingProvider(
+        GeminiProviderConfig(enabled=True, model="configured-model", max_attempts=2),
+        environment={"GEMINI_API_KEY": "super-secret-test-key"},
+        client_factory=lambda _: client_creations.append(client) or client,
+        sleep_fn=delays.append,
+    )
+
+    assert instance.propose(context()).summary == "Update the greeting."
+    assert client_creations == [client]
+    assert len(client.interactions.calls) == 2
+    assert client.interactions.calls[0] == client.interactions.calls[1]
+    assert delays == [0.25]
+    assert client.close_count == 1
+
+
+def test_service_error_retry_exhaustion_closes_once():
+    instance, client = provider([FakeError(503), FakeError(503)], max_attempts=2)
+
+    with pytest.raises(CodingProviderFailure, match="service_error"):
+        instance.propose(context())
+
+    assert len(client.interactions.calls) == 2
+    assert client.close_count == 1
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (FakeError(408), "timeout"),
+        (FakeError(429, "rate limit exceeded"), "rate_limited"),
+    ],
+)
+def test_retryable_errors_retry_then_succeed(error: FakeError, expected: str):
+    delays = []
+    instance, client = provider([error, Response(payload())], max_attempts=2)
+    instance._sleep = delays.append
+
+    assert instance.propose(context()).summary == "Update the greeting."
+    assert len(client.interactions.calls) == 2
+    assert delays == [0.25]
+    assert client.close_count == 1
+    assert expected in {"timeout", "rate_limited"}
+
+
+def test_quota_and_invalid_response_do_not_retry():
+    quota, quota_client = provider(FakeError(429, "quota exhausted"), max_attempts=3)
+    invalid, invalid_client = provider(Response("not-json"), max_attempts=3)
+
+    with pytest.raises(CodingProviderFailure, match="quota_exhausted"):
+        quota.propose(context())
+    with pytest.raises(CodingProviderFailure, match="invalid_response"):
+        invalid.propose(context())
+
+    assert len(quota_client.interactions.calls) == 1 and quota_client.close_count == 1
+    assert len(invalid_client.interactions.calls) == 1 and invalid_client.close_count == 1
+
+
+@pytest.mark.parametrize("error", [FakeError(400), FakeError(401), FakeError(403), FakeError(404)])
+def test_non_retryable_http_errors_do_not_retry(error: FakeError):
+    instance, client = provider(error, max_attempts=3)
 
     with pytest.raises(CodingProviderFailure):
         instance.propose(context())
 
     assert len(client.interactions.calls) == 1
     assert client.close_count == 1
+
+
+def test_configuration_failures_create_no_client(monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec", lambda _: object())
+    factory_calls = []
+
+    def factory(_: str) -> Client:
+        factory_calls.append(True)
+        return Client(Response(payload()))
+
+    configurations = [
+        (GeminiProviderConfig(), {"GEMINI_API_KEY": "x"}),
+        (GeminiProviderConfig(enabled=True), {"GEMINI_API_KEY": "x"}),
+        (GeminiProviderConfig(enabled=True, model="configured-model"), {}),
+    ]
+
+    for config, environment in configurations:
+        instance = GeminiCodingProvider(config, environment=environment, client_factory=factory)
+        with pytest.raises(RuntimeError):
+            instance.propose(context())
+
+    assert factory_calls == []
+
+
+def test_sdk_unavailable_creates_no_client(monkeypatch):
+    monkeypatch.setattr("importlib.util.find_spec", lambda _: None)
+    factory_calls = []
+    instance = GeminiCodingProvider(
+        GeminiProviderConfig(enabled=True, model="configured-model"),
+        environment={"GEMINI_API_KEY": "x"},
+        client_factory=lambda _: factory_calls.append(True),
+    )
+
+    with pytest.raises(RuntimeError, match="not_configured"):
+        instance.propose(context())
+
+    assert factory_calls == []
+
+
+def test_close_failure_does_not_mask_success_or_provider_failure():
+    class FailingCloseClient(Client):
+        def close(self) -> None:
+            self.close_count += 1
+            raise OSError("close failed")
+
+    success = GeminiCodingProvider(
+        GeminiProviderConfig(enabled=True, model="configured-model"),
+        environment={"GEMINI_API_KEY": "x"},
+        client_factory=lambda _: FailingCloseClient(Response(payload())),
+    )
+    failure_client = FailingCloseClient(FakeError(503))
+    failure = GeminiCodingProvider(
+        GeminiProviderConfig(enabled=True, model="configured-model"),
+        environment={"GEMINI_API_KEY": "x"},
+        client_factory=lambda _: failure_client,
+    )
+
+    assert success.propose(context()).summary == "Update the greeting."
+    with pytest.raises(CodingProviderFailure, match="service_error"):
+        failure.propose(context())
+    assert failure_client.close_count == 1
+
+
+def test_coding_uses_shared_timeout_configuration():
+    instance, client = provider(Response(payload()), timeout_seconds=17)
+    captured = []
+
+    def new_client(api_key: str) -> Client:
+        captured.append((api_key, instance.config.timeout_seconds))
+        return client
+
+    instance._new_client = new_client
+    instance._client_factory = None
+
+    instance.propose(context())
+
+    assert captured == [("super-secret-test-key", 17)]
+    assert instance._health_provider.config is instance.config
 
 
 def test_local_health_states(monkeypatch):

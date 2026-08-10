@@ -2,13 +2,19 @@
 
 import json
 import os
+import time
 from collections.abc import Callable
 
 from pydantic import ValidationError
 
 from car.coding.base import CodingProviderFailure
 from car.coding.models import CodingProposal, CodingTaskContext
-from car.providers.gemini import GeminiProvider, GeminiProviderConfig, _map_gemini_error
+from car.providers.gemini import (
+    GeminiProvider,
+    GeminiProviderConfig,
+    _map_gemini_error,
+    is_retryable,
+)
 from car.providers.models import (
     ProviderCapabilities,
     ProviderError,
@@ -28,10 +34,12 @@ class GeminiCodingProvider:
         config: GeminiProviderConfig,
         environment: dict[str, str] | None = None,
         client_factory: Callable[[str], object] | None = None,
+        sleep_fn: Callable[[float], None] = time.sleep,
     ) -> None:
         self.config = config
         self._environment = environment if environment is not None else os.environ
         self._client_factory = client_factory
+        self._sleep = sleep_fn
         self._health_provider = GeminiProvider(config, environment=self._environment)
 
     def capabilities(self) -> ProviderCapabilities:
@@ -42,7 +50,7 @@ class GeminiCodingProvider:
         return self._health_provider.health()
 
     def propose(self, context: CodingTaskContext) -> CodingProposal:
-        """Request and locally validate one proposal, without retrying or applying it."""
+        """Request and locally validate a proposal, without applying it."""
         health = self.health()
         if health.status != ProviderStatus.CONFIGURED:
             raise RuntimeError(health.status.value)
@@ -50,8 +58,15 @@ class GeminiCodingProvider:
         client = (
             self._client_factory(api_key) if self._client_factory else self._new_client(api_key)
         )
+        prompt = self._build_prompt(context)
         try:
-            return self._propose_once(client, self._build_prompt(context))
+            for attempt in range(1, self.config.max_attempts + 1):
+                try:
+                    return self._propose_once(client, prompt)
+                except CodingProviderFailure as error:
+                    if not is_retryable(error.kind) or attempt == self.config.max_attempts:
+                        raise
+                    self._sleep(min(0.25 * (2 ** (attempt - 1)), 2.0))
         finally:
             close = getattr(client, "close", None)
             if callable(close):
