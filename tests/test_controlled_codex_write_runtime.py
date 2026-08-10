@@ -17,6 +17,7 @@ from car.codex_write.runtime import (
     CONTROLLED_WRITE_INSTRUCTION,
     ControlledCodexWriteRuntime,
     SubprocessControlledCodexRunner,
+    controlled_child_environment,
 )
 from car.codex_write.runtime_models import (
     ControlledCodexHealthStatus,
@@ -259,6 +260,19 @@ def test_health_uses_resolved_executable_and_environment_is_secret_safe(
         assert service.cleanup(projected).removed
 
 
+def test_child_environment_uses_one_case_insensitive_entry_per_logical_name():
+    environment = controlled_child_environment(
+        {
+            "Path": "first-path",
+            "PATH": "last-path",
+            "AppData": "application-data",
+            "GEMINI_API_KEY": "secret",
+        }
+    )
+    assert environment == {"PATH": "last-path", "APPDATA": "application-data"}
+    assert len({name.casefold() for name in environment}) == len(environment)
+
+
 def test_timeout_nonzero_empty_output_and_missing_cli_are_structured(git_repository: Path):
     projected, manager, service = _projected(git_repository)
     try:
@@ -342,6 +356,8 @@ def test_runtime_bounds_captured_output(git_repository: Path):
     )
     try:
         result = runtime.execute(_request(projected), CodexWriteAuthorization(authorized=True))
+        assert len(result.stdout) <= 100
+        assert len(result.stderr) <= 100
         assert result.stdout.endswith("[truncated by CAR]")
         assert result.stderr.endswith("[truncated by CAR]")
     finally:

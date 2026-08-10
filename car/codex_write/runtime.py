@@ -333,7 +333,11 @@ def _health_failure(status: ControlledCodexHealthStatus) -> CodexWriteFailureKin
 
 
 def _truncate(value: str, maximum: int) -> str:
-    return value if len(value) <= maximum else value[:maximum] + TRUNCATION_MARKER
+    if len(value) <= maximum:
+        return value
+    if maximum <= len(TRUNCATION_MARKER):
+        return TRUNCATION_MARKER[:maximum]
+    return value[: maximum - len(TRUNCATION_MARKER)] + TRUNCATION_MARKER
 
 
 def _text(value: str | bytes | None) -> str:
