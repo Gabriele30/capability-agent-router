@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 
@@ -22,6 +23,7 @@ class CommandRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=command.timeout_seconds,
+                env=_child_environment(command),
             )
             return CommandResult(
                 command=command,
@@ -44,3 +46,17 @@ class CommandRunner:
                 timed_out=True,
                 duration_seconds=round(time.monotonic() - started, 3),
             )
+
+
+def _child_environment(command: CommandSpec) -> dict[str, str] | None:
+    """Prevent pytest verification artifacts without mutating the CAR process environment."""
+    if command.args not in (["python", "-m", "pytest"], ["pytest"]):
+        return None
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    options = environment.get("PYTEST_ADDOPTS", "")
+    if "no:cacheprovider" not in options:
+        environment["PYTEST_ADDOPTS"] = " ".join(
+            item for item in (options, "-p no:cacheprovider") if item
+        )
+    return environment
