@@ -76,6 +76,26 @@ class TimeoutEngine:
         )
 
 
+class CountingPatchApplier:
+    def __init__(self) -> None:
+        self.calls = 0
+        self._applier = SafePatchApplier()
+
+    def apply(self, repository_root, patch_set):
+        self.calls += 1
+        return self._applier.apply(repository_root, patch_set)
+
+
+class CountingVerificationCoordinator:
+    def __init__(self, coordinator) -> None:
+        self.calls = 0
+        self._coordinator = coordinator
+
+    def verify(self, repository_root, transaction, plan):
+        self.calls += 1
+        return self._coordinator.verify(repository_root, transaction, plan)
+
+
 def _evaluation(route):
     decision = RoutingDecision(
         route=route,
@@ -174,6 +194,32 @@ def test_success_modify_and_verification_rollback(tmp_path: Path):
         failed.outcome == CodingPipelineOutcome.VERIFICATION_FAILED
         and target.read_text(encoding="utf-8") == "value = 1\n"
     )
+
+
+def test_success_create_calls_each_pipeline_boundary_once(tmp_path: Path):
+    (tmp_path / "generated").mkdir()
+    patch = "--- /dev/null\n+++ b/generated/new.py\n@@ -0,0 +1 @@\n+value = 1\n"
+    provider = FakeProvider(_proposal("generated/new.py", patch, FileChangeOperation.CREATE))
+    applier = CountingPatchApplier()
+    coordinator = CountingVerificationCoordinator(
+        CodingVerificationCoordinator(FakeEngine(VerificationStatus.PASSED))
+    )
+
+    result = execute_coding_pipeline(
+        repository_root=tmp_path,
+        routing_evaluation=_evaluation(Route.GEMINI),
+        coding_context=_context(Route.GEMINI, []),
+        coding_provider=provider,
+        coding_policy=None,
+        patch_validation_policy=None,
+        verification_plan=_plan(tmp_path),
+        patch_applier=applier,
+        verification_coordinator=coordinator,
+    )
+
+    assert result.outcome == CodingPipelineOutcome.SUCCEEDED
+    assert (tmp_path / "generated" / "new.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert provider.calls == 1 and applier.calls == 1 and coordinator.calls == 1
 
 
 def test_provider_and_validation_failures_do_not_mutate(tmp_path: Path):
