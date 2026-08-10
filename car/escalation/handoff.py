@@ -208,6 +208,7 @@ def render_codex_handoff_markdown(handoff: CodexHandoff) -> str:
         "## Attempted Patch",
         patches,
         "## Verification",
+        f"Failure kind: {handoff.verification.failure_kind}",
         checks,
         "## Rollback",
         f"Succeeded: {handoff.verification.rollback_succeeded}",
