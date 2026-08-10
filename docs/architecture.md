@@ -156,6 +156,26 @@ It consumes structured evidence only. It does not call Gemini, apply a new patch
 rerun verification, persist `.car-context`, or connect the flow to `car task`; Codex
 remains read-only throughout.
 
+Milestone 5D1-A adds a narrow internal composition boundary for an already eligible
+Gemini route:
+
+```text
+RoutingEvaluation (GEMINI or GEMINI_TO_CODEX)
+  ↓
+one injected CodingProvider proposal
+  ↓
+PatchValidator → SafePatchApplier → Applied Transaction
+  ↓
+CodingVerificationCoordinator
+  ├── PASS → finalize
+  └── FAIL → rollback
+```
+
+It exposes only structured attempt, validation, apply, and verification evidence.
+It does not select files, generate plans, modify CLI behavior, invoke Codex, persist
+artifacts, or turn provider output into a command. The transaction and snapshot
+ownership remain entirely inside the existing safe-patch boundary.
+
 ## Planned
 
 Future work may add more L0 tools, Gemini coding execution, Codex handoff and

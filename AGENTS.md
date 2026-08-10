@@ -89,6 +89,10 @@ Project: CAR — Capability Agent Router
 - Verified-outcome composition must only consume existing structured evidence. It must
   not rerun verification, apply patches, call Gemini, persist a handoff, or wire the
   read-only Codex flow into `car task`.
+- The internal coding pipeline may compose exactly one eligible, injected coding
+  provider proposal with CAR-owned validation, safe application, and verification.
+  It must remain separate from `car task`, Codex escalation, persistence, and command
+  selection; only the patch applier may write target files after validation.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,

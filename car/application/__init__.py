@@ -6,6 +6,11 @@ from car.application.codex import (
     CodexExecutionPolicy,
     execute_codex_handoff,
 )
+from car.application.coding import (
+    CodingPipelineOutcome,
+    CodingPipelineResult,
+    execute_coding_pipeline,
+)
 from car.application.escalation import (
     CodexEscalationExecutionFailureKind,
     CodexEscalationExecutionResult,
@@ -28,4 +33,7 @@ __all__ = [
     "PostFailurePipelineOutcome",
     "PostFailurePipelineResult",
     "process_verified_coding_outcome",
+    "CodingPipelineOutcome",
+    "CodingPipelineResult",
+    "execute_coding_pipeline",
 ]
