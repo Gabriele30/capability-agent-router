@@ -150,7 +150,11 @@ class ControlledCodexWriteRuntime:
         if health.executable is None:
             return _result(CodexWriteFailureKind.CODEX_NOT_READY, workspace)
         process = self._runner.run(
-            _execution_argv(health.executable, is_windows=self._is_windows),
+            _execution_argv(
+                health.executable,
+                workspace_path=workspace.workspace.path,
+                is_windows=self._is_windows,
+            ),
             cwd=workspace.workspace.path,
             stdin=_stdin(request),
             environment=controlled_child_environment(),
@@ -248,7 +252,8 @@ class ControlledCodexWriteRuntime:
         return self._workspace_manager.owns(workspace)
 
 
-def _execution_argv(executable: str, *, is_windows: bool) -> list[str]:
+def _execution_argv(executable: str, *, workspace_path: Path, is_windows: bool) -> list[str]:
+    """Build the fixed command from the CAR-owned projected workspace only."""
     argv = [executable]
     if is_windows:
         argv.extend(["-c", 'windows.sandbox="unelevated"'])
@@ -261,6 +266,8 @@ def _execution_argv(executable: str, *, is_windows: bool) -> list[str]:
             "--sandbox",
             "workspace-write",
             "--ignore-user-config",
+            "--cd",
+            str(workspace_path),
             CONTROLLED_WRITE_INSTRUCTION,
         ]
     )

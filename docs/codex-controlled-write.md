@@ -135,18 +135,22 @@ does not perform health checks or start a process.
 
 Its fixed structured command uses the resolved local Codex executable with global
 approval set before `exec`, `--ephemeral`, `--sandbox workspace-write`, and
-`--ignore-user-config`. CAR supplies no additional writable roots, no network
-enablement, no privilege fallback, and no user-config parsing. Task and optional
-structured handoff evidence travel over stdin; output is bounded. The child
-environment is a positive allowlist for process, platform, local login discovery,
-and locale variables, excluding provider and token environment values.
+`--ignore-user-config`. It also passes `--cd` with the exact path of the validated,
+CAR-owned `ProjectedIsolatedWorkspace`; the subprocess `cwd` is bound to that same
+workspace. CAR supplies no additional writable roots, no network enablement, no
+privilege fallback, and no user-config parsing. Task and optional structured handoff
+evidence travel over stdin; output is bounded. The child environment is a positive
+allowlist for process, platform, local login discovery, and locale variables,
+excluding provider and token environment values.
 
 On Windows, live validation with Codex CLI 0.147.0 observed workspace writes being
 rejected until CAR selected the Windows sandbox backend explicitly with
 `windows.sandbox="unelevated"`. The controlled-write runtime therefore pins that
-backend on Windows only, while retaining `workspace-write`, `approval=never`,
-`--ignore-user-config`, and no additional writable roots. This is not an elevated
-sandbox and does not apply to the separate read-only runtime or to POSIX commands.
+backend on Windows only. Controlled-write validation also requires explicit Codex
+`--cd` bound to the projected isolated workspace and a subprocess `cwd` bound to the
+same path. CAR retains `workspace-write`, `approval=never`, `--ignore-user-config`,
+and no additional writable roots. This is not an elevated sandbox and does not apply
+to the separate read-only runtime; `--cd` remains explicit on POSIX as well.
 
 An exit-zero process with a final message means only **Codex execution completed**.
 It does not accept a change, validate a delta, verify a task, or modify the source

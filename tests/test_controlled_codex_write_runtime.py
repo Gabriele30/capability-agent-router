@@ -194,6 +194,8 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
                 "--sandbox",
                 "workspace-write",
                 "--ignore-user-config",
+                "--cd",
+                str(projected.workspace.path),
                 CONTROLLED_WRITE_INSTRUCTION,
             ]
         )
@@ -203,6 +205,9 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         else:
             assert "windows.sandbox" not in " ".join(argv)
         assert argv.index("--ask-for-approval") < argv.index("exec")
+        assert argv[argv.index("--cd") + 1] == str(projected.workspace.path)
+        assert call["cwd"] == Path(argv[argv.index("--cd") + 1]) == projected.workspace.path
+        assert str(git_repository) not in argv
         assert not any(
             flag in argv
             for flag in (
@@ -218,6 +223,7 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         assert "README.md" in call["stdin"]
         assert "Prior attempt failed" in call["stdin"]
         assert task not in argv
+        assert "Prior attempt failed" not in argv
     finally:
         assert service.cleanup(projected).removed
 
