@@ -37,6 +37,11 @@ class CodexWriteFailureKind(StrEnum):
     VERIFICATION_FAILED = "verification_failed"
     ROLLBACK_FAILED = "rollback_failed"
     WORKSPACE_UNCERTAIN = "workspace_uncertain"
+    INVALID_REPOSITORY = "invalid_repository"
+    GIT_UNAVAILABLE = "git_unavailable"
+    GIT_TIMEOUT = "git_timeout"
+    WORKSPACE_SETUP_FAILED = "workspace_setup_failed"
+    WORKSPACE_CLEANUP_FAILED = "workspace_cleanup_failed"
 
 
 class CodexWriteAuthorization(_StrictModel):

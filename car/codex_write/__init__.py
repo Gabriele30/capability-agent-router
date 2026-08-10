@@ -12,6 +12,12 @@ from .models import (
     baseline_matches,
     validate_change_set,
 )
+from .workspace import (
+    IsolatedCodexWorkspace,
+    IsolatedWorkspaceManager,
+    WorkspaceCleanupResult,
+    WorkspaceCreationResult,
+)
 
 __all__ = [
     "CodexChangeSet",
@@ -24,4 +30,8 @@ __all__ = [
     "CodexWorkspaceBaseline",
     "baseline_matches",
     "validate_change_set",
+    "IsolatedCodexWorkspace",
+    "IsolatedWorkspaceManager",
+    "WorkspaceCleanupResult",
+    "WorkspaceCreationResult",
 ]

@@ -156,7 +156,7 @@ not invoke a live Codex execution.
 
 - Current: 0.5 — explicit, verified Gemini coding execution with rollback and
   optional read-only Codex diagnostics.
-- Next: broaden explicit execution coverage while keeping verification, rollback,
-  and user authorization intact.
+- Next: 5E2-B controlled baseline projection for dirty worktrees, while keeping
+  the source repository untouched.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.

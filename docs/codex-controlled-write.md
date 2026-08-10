@@ -5,18 +5,17 @@ enable Codex writing in CAR 0.5.x.
 
 ## Boundary and strategy
 
-Codex is an untrusted code-modification producer. Future coding runs will use an
+Codex is an untrusted code-modification producer. Future coding runs use an
 isolated temporary Git worktree derived from a captured repository baseline, not
 the user's working tree. The isolated workspace excludes `.car-context` and is
-removed independently of the user repository. CAR will derive the exact filesystem
-delta from that workspace; Codex text is diagnostic evidence, never the authority
-for changed files.
+removed independently of the user repository. CAR derives the exact filesystem
+delta from that workspace; Codex text is diagnostic evidence, never authority for
+changed files.
 
 The future apply boundary receives only a validated `CodexChangeSet`. CAR retains
 authorization, allowed scope, protected paths, verification, finalization, and
 rollback decisions. The existing read-only `LocalCodexRuntime` is unchanged; a
-separate explicit runtime and policy boundary will be required for controlled
-coding.
+separate explicit runtime and policy boundary is required for controlled coding.
 
 ## Contracts and defaults
 
@@ -51,9 +50,29 @@ the isolated workspace lifecycle is bounded and removable without touching the u
 repository. A successful Codex process is not task success: changes must be
 detected, accepted, verified, and finalized.
 
-## Planned sequence
+## 5E2-A: implemented isolated lifecycle
 
-1. **5E2 — Isolated Codex Workspace Foundation**
+CAR now creates a temporary, detached Git worktree at the exact resolved `HEAD`
+OID using structured Git arguments. The temporary worktree is outside the source
+repository and is removed only through `git worktree remove --force` for its
+CAR-owned path. CAR then removes only its exact temporary parent directory.
+
+The source worktree is never checked out, stashed, reset, cleaned, committed, or
+otherwise changed by this lifecycle. Git's transient worktree metadata may exist
+while the isolated workspace is active and is removed with it. This first slice
+represents committed `HEAD` only: it deliberately does not project dirty, staged,
+untracked, ignored, or `.car-context` state into the detached worktree.
+
+No Codex process, provider, network call, delta extraction, patch validation,
+application, verification, or rollback is enabled by this lifecycle.
+
+## Next sequence
+
+1. **5E2-B — Controlled baseline projection for dirty worktrees.** Its boundary
+   is `HEAD` worktree plus safe projection of the current authorized user
+   baseline: dirty tracked contents, staged versus working-tree content, bounded
+   safe untracked files, protected paths, size/file limits, concurrent baseline
+   revalidation, no credential copying, and exact source-baseline semantics.
 2. **5E3 — Controlled Codex Coding Execution in Isolation**
 3. **5E4 — Exact Delta Extraction and Validation**
 4. **5E5 — CAR-controlled Apply, Verification, and Rollback**
