@@ -47,6 +47,14 @@ class CodexWriteFailureKind(StrEnum):
     UNSUPPORTED_REPOSITORY_STATE = "unsupported_repository_state"
     PROJECTION_FAILED = "projection_failed"
     PROJECTION_VALIDATION_FAILED = "projection_validation_failed"
+    INVALID_WORKSPACE = "invalid_workspace"
+    CODEX_CLI_NOT_FOUND = "codex_cli_not_found"
+    CODEX_NOT_AUTHENTICATED = "codex_not_authenticated"
+    CODEX_NOT_READY = "codex_not_ready"
+    CODEX_TIMEOUT = "codex_timeout"
+    CODEX_PROCESS_ERROR = "codex_process_error"
+    CODEX_NONZERO_EXIT = "codex_nonzero_exit"
+    CODEX_INVALID_OUTPUT = "codex_invalid_output"
 
 
 class CodexWriteAuthorization(_StrictModel):
@@ -65,6 +73,10 @@ class CodexWritePolicy(_StrictModel):
     max_baseline_total_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=32 * 1024 * 1024)
     max_projection_files: int = Field(default=50, ge=1, le=500)
     max_projection_total_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=32 * 1024 * 1024)
+    codex_login_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    codex_write_timeout_seconds: float = Field(default=120, gt=0, le=900)
+    codex_max_stdout_chars: int = Field(default=8_000, ge=100, le=100_000)
+    codex_max_stderr_chars: int = Field(default=4_000, ge=100, le=100_000)
     allow_create: bool = True
     allow_modify: bool = True
     allow_delete: bool = False

@@ -125,13 +125,43 @@ branch, HEAD, and files remain untouched.
 No Codex execution, provider call, delta extraction, or real-repository apply is
 enabled.
 
+## 5E3-A: implemented controlled write runtime foundation
+
+CAR now has a separate `ControlledCodexWriteRuntime`; the existing
+`LocalCodexRuntime` remains a read-only diagnostic adapter. The write runtime
+accepts only a currently CAR-owned `ProjectedIsolatedWorkspace`, requires both an
+enabled `CodexWritePolicy` and runtime `CodexWriteAuthorization`, and otherwise
+does not perform health checks or start a process.
+
+Its fixed structured command uses the resolved local Codex executable with global
+approval set before `exec`, `--ephemeral`, `--sandbox workspace-write`, and
+`--ignore-user-config`. CAR supplies no additional writable roots, no network
+enablement, no privilege fallback, and no user-config parsing. Task and optional
+structured handoff evidence travel over stdin; output is bounded. The child
+environment is a positive allowlist for process, platform, local login discovery,
+and locale variables, excluding provider and token environment values.
+
+An exit-zero process with a final message means only **Codex execution completed**.
+It does not accept a change, validate a delta, verify a task, or modify the source
+repository. Workspace lifecycle remains caller-owned so a future stage can inspect
+the isolated filesystem delta.
+
+### Isolation claim
+
+CAR's current security design guarantees controlled **write confinement** through
+the disposable projected workspace, Codex `workspace-write`, no extra writable
+roots, and future delta validation. CAR does **not** claim host-wide read
+isolation: read confinement depends on Codex and OS sandbox behavior and is not a
+CAR guarantee in 5E3-A.
+
 ## Next sequence
 
-1. **5E3-A — Controlled Codex Write Runtime Foundation.** It will introduce a
-   runtime boundary separate from `LocalCodexRuntime` that may operate only inside
-   a `ProjectedIsolatedWorkspace`; it will not yet accept deltas or apply changes
-   to the real repository.
-2. **5E3 — Controlled Codex Coding Execution in Isolation**
+1. **5E3-B — Opt-in Live Codex Isolated Write Validation.** It will use a
+   dedicated opt-in flag to prove a real small workspace-write change in a
+   projected disposable workspace while preserving the source repository and
+   isolated Git state. It will still not accept a delta, apply to source, or claim
+   task success.
+2. **5E4 — Exact Delta Extraction and Validation**
 3. **5E4 — Exact Delta Extraction and Validation**
 4. **5E5 — CAR-controlled Apply, Verification, and Rollback**
 5. **5E6 — Explicit CLI Authorization and End-to-End Flow**

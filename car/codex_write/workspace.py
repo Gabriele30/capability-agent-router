@@ -172,6 +172,10 @@ class IsolatedWorkspaceManager:
         del self._owned[workspace.ownership_token]
         return WorkspaceCleanupResult(removed=True)
 
+    def owns(self, workspace: IsolatedCodexWorkspace) -> bool:
+        """Check the runtime-only identity required by later isolated operations."""
+        return self._owned.get(workspace.ownership_token) == workspace and workspace.path.is_dir()
+
     @contextmanager
     def temporary(self, repository: Path) -> Generator[IsolatedCodexWorkspace, None, None]:
         created = self.create(repository)

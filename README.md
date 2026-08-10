@@ -156,7 +156,9 @@ not invoke a live Codex execution.
 
 - Current: 0.5 — explicit, verified Gemini coding execution with rollback and
   optional read-only Codex diagnostics.
-- Next: 5E3-A controlled Codex write runtime foundation, bounded to an isolated
-  projected workspace and still without real-repository application.
+- Current foundation: controlled Codex write runtime in isolated projected
+  workspaces; it has no public CLI wiring or real-repository application.
+- Next: opt-in live validation of the isolated runtime, still without delta
+  acceptance or source-repository application.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.

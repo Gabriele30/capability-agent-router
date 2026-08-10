@@ -24,6 +24,14 @@ from .projection import (
     ProjectedIsolatedWorkspace,
     ProjectionResult,
 )
+from .runtime import ControlledCodexWriteRuntime, SubprocessControlledCodexRunner
+from .runtime_models import (
+    ControlledCodexHealthStatus,
+    ControlledCodexProcessResult,
+    ControlledCodexWriteHealth,
+    ControlledCodexWriteRequest,
+    ControlledCodexWriteResult,
+)
 from .workspace import (
     IsolatedCodexWorkspace,
     IsolatedWorkspaceManager,
@@ -34,6 +42,12 @@ from .workspace import (
 __all__ = [
     "BaselineCaptureResult",
     "BaselineProjectionService",
+    "ControlledCodexHealthStatus",
+    "ControlledCodexProcessResult",
+    "ControlledCodexWriteHealth",
+    "ControlledCodexWriteRequest",
+    "ControlledCodexWriteResult",
+    "ControlledCodexWriteRuntime",
     "BaselineRevalidationResult",
     "CodexChangeSet",
     "CodexChangeValidationResult",
@@ -51,6 +65,7 @@ __all__ = [
     "ProjectionResult",
     "SourceBaseline",
     "SourceBaselineService",
+    "SubprocessControlledCodexRunner",
     "WorkspaceCleanupResult",
     "WorkspaceCreationResult",
     "parse_porcelain_v2",
