@@ -154,13 +154,29 @@ roots, and future delta validation. CAR does **not** claim host-wide read
 isolation: read confinement depends on Codex and OS sandbox behavior and is not a
 CAR guarantee in 5E3-A.
 
+## 5E3-B: live validation implemented, pending explicit local execution
+
+An integration test now validates the complete B1 → B2 → controlled-write runtime
+path against a synthetic temporary Git repository. It is independently gated by
+`CAR_RUN_LIVE_CODEX_WRITE_TESTS=1`. Without that exact environment value, the test
+skips at module import before temporary-repository creation, baseline capture,
+worktree creation, health checks, or any Codex subprocess.
+
+When explicitly enabled, the test may skip only when the locally installed Codex
+CLI or its existing local login is unavailable. Once ready, runtime, sandbox,
+filesystem, Git-state, source-invariance, and cleanup failures are test failures.
+It checks a small authorized change only in the projected workspace, leaves source
+files and Git state unchanged, requires the isolated change to remain unstaged and
+detached, and then removes the owned worktree.
+
+This is not live verified until a user explicitly runs it successfully. It does not
+accept a Codex delta, apply anything to the source repository, or establish
+host-wide read isolation.
+
 ## Next sequence
 
-1. **5E3-B — Opt-in Live Codex Isolated Write Validation.** It will use a
-   dedicated opt-in flag to prove a real small workspace-write change in a
-   projected disposable workspace while preserving the source repository and
-   isolated Git state. It will still not accept a delta, apply to source, or claim
-   task success.
+1. **5E3-B — Opt-in Live Codex Isolated Write Validation.** Implemented; pending
+   explicit local execution with `CAR_RUN_LIVE_CODEX_WRITE_TESTS=1`.
 2. **5E4 — Exact Delta Extraction and Validation**
 3. **5E4 — Exact Delta Extraction and Validation**
 4. **5E5 — CAR-controlled Apply, Verification, and Rollback**
