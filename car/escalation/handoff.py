@@ -114,9 +114,9 @@ def build_codex_handoff(
             operations=[change.operation.value for change in proposal.changes] if proposal else [],
             diffs=diffs,
             validation_valid=patch_validation.valid if patch_validation else None,
-            validation_violations=[item.kind.value for item in patch_validation.violations][
-                : active.max_reasons
-            ]
+            validation_violations=[
+                f"{item.kind.value}: {item.summary}" for item in patch_validation.violations
+            ][: active.max_reasons]
             if patch_validation
             else [],
             apply_succeeded=patch_apply.succeeded if patch_apply else None,
