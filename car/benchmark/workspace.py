@@ -29,4 +29,5 @@ class BenchmarkWorkspaceSet:
         return digest.hexdigest()
 
     def cleanup(self) -> None:
-        shutil.rmtree(self.root)
+        if self.root.exists():
+            shutil.rmtree(self.root)
