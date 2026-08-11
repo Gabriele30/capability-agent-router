@@ -16,6 +16,7 @@ if os.getenv("CAR_RUN_LIVE_CLI_CONTROLLED_CODEX_TESTS") != "1":
     )
 
 
+import car.application.coding_flow as coding_flow  # noqa: E402
 from car.application.execution_gateway import CodingFlowGateway  # noqa: E402
 from car.codex_write.models import CodexWritePolicy  # noqa: E402
 from car.codex_write.runtime import ControlledCodexWriteRuntime  # noqa: E402
@@ -155,6 +156,22 @@ def test_cli_execute_real_gemini_to_controlled_codex_write(tmp_path: Path, monke
         return gateway
 
     monkeypatch.setattr(cli, "_build_coding_flow_gateway", build_gateway)
+    rollback_observed = []
+    original_post_failure = coding_flow.process_verified_coding_outcome
+
+    def assert_rollback_before_codex(**kwargs):
+        assert calculator.read_bytes() == before_calculator
+        assert test_file.read_bytes() == before_test
+        assert _git(tmp_path, "rev-parse", "HEAD") == before_head
+        assert _git(tmp_path, "branch", "--show-current") == before_branch
+        assert _git(tmp_path, "diff", "--cached", "--binary") == before_index
+        assert _git(tmp_path, "status", "--porcelain") == ""
+        rollback_observed.append(True)
+        return original_post_failure(**kwargs)
+
+    monkeypatch.setattr(
+        coding_flow, "process_verified_coding_outcome", assert_rollback_before_codex
+    )
     monkeypatch.chdir(tmp_path)
     result = runner.invoke(
         cli.app,
@@ -181,6 +198,7 @@ def test_cli_execute_real_gemini_to_controlled_codex_write(tmp_path: Path, monke
     assert request.codex_write_policy.enabled
     assert request.codex_write_authorization.authorized
     assert request.codex_write_paths == ("calculator.py",)
+    assert rollback_observed == [True]
     flow = gateway.flow_result
     assert gateway.authorized and gateway.attempted and gateway.succeeded
     assert flow is not None and flow.succeeded
@@ -189,6 +207,9 @@ def test_cli_execute_real_gemini_to_controlled_codex_write(tmp_path: Path, monke
     assert pipeline is not None and pipeline.route == Route.GEMINI_TO_CODEX
     assert pipeline.patch_apply is not None and pipeline.patch_apply.succeeded
     assert pipeline.verification is not None and pipeline.verification.rolled_back
+    controlled = flow.post_failure.controlled_write if flow.post_failure else None
+    assert controlled is not None and controlled.accepted
+    assert controlled.created_paths == [] and controlled.modified_paths == ["calculator.py"]
     assert calculator.read_bytes() != before_calculator
     assert (
         calculator.read_text(encoding="utf-8")
