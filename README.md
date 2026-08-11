@@ -115,8 +115,8 @@ it does not send a Gemini request or invoke a Codex process.
 | Gemini classification | Implemented, optional |
 | Scoped Gemini coding execution | Explicit preview, authorization, verification, and rollback |
 | Codex routing | Implemented |
-| Codex coding execution | Not implemented; read-only diagnostics only |
-| Gemini → Codex failure handoff | Optional in-memory read-only diagnostic fallback |
+| Codex coding execution | Experimental, safety-gated controlled writes after verified Gemini failure |
+| Gemini → Codex failure handoff | Read-only diagnostic fallback or separately authorized controlled write |
 
 `car execute` may modify only files selected with `--file`, and CAR retains a
 change only after selected CAR-controlled verification checks pass. Failed
@@ -128,6 +128,21 @@ Codex currently runs only as an optional read-only diagnostic fallback through t
 locally installed runtime authenticated by the user's existing Codex/ChatGPT
 session. It never writes repository files, and a successful diagnosis never means
 the coding task has been resolved. CAR does not require an OpenAI API key.
+
+### Experimental controlled Codex write
+
+Controlled write is safety-gated and disabled by default. Codex works only in a
+CAR-owned isolated workspace; CAR independently detects and validates its filesystem
+delta, applies only permitted files transactionally, then verifies the source change.
+Only CAR finalizes acceptance after verification and post-verification integrity
+checks. This is currently available only after a verified `GEMINI_TO_CODEX` failure,
+not for a direct `CODEX` route.
+
+The workflow requires all of the following: `codex_write.enabled=true` in local
+configuration, normal `car execute` confirmation, `--allow-codex-write`, at least one
+explicit `--codex-write-path`, CAR-selected `--verify ruff|pytest`, and an eligible
+verified escalation. Paths are existing repository-relative files; directories and
+globs are not authorization mechanisms.
 
 ## Safety
 
@@ -154,6 +169,10 @@ own explicit flag:
 - `CAR_RUN_LIVE_CODEX_TESTS=1` — local read-only Codex runtime.
 - `CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1` — Gemini failure, rollback, and read-only Codex diagnostic flow (C2, live verified).
 
+The controlled-write live gates are separate: `CAR_RUN_LIVE_GEMINI_TO_CONTROLLED_CODEX_TESTS=1`
+for the internal chain and `CAR_RUN_LIVE_CLI_CONTROLLED_CODEX_TESTS=1` for the public
+CLI path. Both have been manually live validated on synthetic repositories.
+
 Without these flags, the standard suite makes no billable provider calls and does
 not invoke a live Codex execution.
 
@@ -161,9 +180,9 @@ not invoke a live Codex execution.
 
 - Current: 0.5 — explicit, verified Gemini coding execution with rollback and
   optional read-only Codex diagnostics.
-- Current foundation: controlled Codex write runtime in isolated projected
-  workspaces; it has no public CLI wiring or real-repository application.
-- Next: opt-in live validation of the isolated runtime, still without delta
-  acceptance or source-repository application.
+- Current 0.6 release scope: experimental controlled writes with CLI wiring,
+  isolated projection, delta validation, transactional source application, and
+  verification-gated finalization.
+- Next: controlled 0.6.0 version bump, tag, and release publication after audit sign-off.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.

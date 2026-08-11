@@ -256,7 +256,41 @@ C2 validated a real Gemini proposal, intentional pytest failure, byte-preserving
 rollback, clean workspace invariants, and real read-only Codex analysis. Codex
 diagnostic success remains explicitly unresolved at the coding-task boundary.
 
-## Planned
+## Current controlled-write architecture
+
+The experimental controlled-write path is available only after an eligible verified
+`GEMINI_TO_CODEX` failure. Routing alone never authorizes a write. A caller must also
+provide an enabled local policy, invocation-local write authorization, explicit
+repository-relative file paths, and a non-empty CAR-controlled verification plan.
+
+```text
+Verified Gemini failure and rollback
+  -> bounded handoff
+  -> source baseline
+  -> isolated Git worktree projection
+  -> controlled Codex workspace-write
+  -> strict delta detection and validation
+  -> transactional source application
+  -> CAR verification and integrity recheck
+  -> finalize or identity-aware rollback
+  -> isolated workspace cleanup
+```
+
+Codex never directly writes the source repository. The controlled runtime can only
+write its CAR-owned projected workspace. CAR validates the whole resulting delta and
+accepts source changes only after B2 verification, post-verification integrity, and
+transaction finalization. The separate read-only Codex fallback remains available and
+cannot automatically upgrade to write mode.
+
+Two opt-in synthetic-repository live tests cover the internal chain and the public
+`car execute` path. Both have been manually observed as passed; standard CI keeps them
+skipped and credential-free.
+
+## Historical and planned notes
+
+The material below preserves milestone context. Where it describes future coding or
+CLI behavior already superseded by the controlled-write architecture above, the current
+architecture takes precedence.
 
 Future work may add more L0 tools and broaden explicit execution coverage while
 preserving CAR-owned validation, verification, rollback, and read-only Codex

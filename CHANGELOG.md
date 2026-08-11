@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0] - Unreleased
+
+### Added
+
+- Experimental controlled Codex writes after eligible verified Gemini-to-Codex
+  failures, with explicit per-invocation authorization and repository-relative scope.
+- Exact source baseline capture, isolated worktree projection, strict delta validation,
+  transactional source application, and verification-gated finalization.
+- Opt-in live validation for both the internal chain and the public `car execute` path.
+
+### Safety
+
+- Codex writes only in CAR-owned isolated workspaces; CAR validates the whole delta.
+- Routing and read-only Codex authorization do not grant write permission.
+- Source acceptance requires verification, post-verification integrity, and finalization;
+  source application and the Codex runtime cannot accept changes independently.
+- Windows ACL preparation is limited to CAR-owned temporary worktree parents.
+
+### Known limitations
+
+- Controlled write is disabled by default and requires explicit existing-file scope.
+- Direct `CODEX` routes do not use controlled write; DELETE, RENAME, symlink,
+  protected-path, and binary changes fail closed.
+
 ## [0.5.0] - 2026-08-10
 
 ### Added

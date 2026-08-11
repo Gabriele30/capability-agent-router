@@ -1,7 +1,8 @@
 # Controlled Codex Write Design
 
-This document defines the trust boundary for future Codex coding. It does not
-enable Codex writing in CAR 0.5.x.
+This document defines the trust boundary for CAR's experimental controlled Codex
+write path. The feature is disabled by default and remains release-audited, not broadly
+authorized.
 
 ## Boundary and strategy
 
@@ -265,8 +266,8 @@ authorization -> baseline -> isolated projection -> controlled Codex write
 -> finalize or rollback -> isolated workspace cleanup
 ```
 
-It is **internal only** and is not wired to CLI, routing, Gemini escalation, or
-any user-visible write behavior. The pipeline owns only sequencing and owned
+The pipeline is composed by the post-failure escalation path; it is not a general
+Codex execution endpoint and does not change routing. The pipeline owns only sequencing and owned
 workspace cleanup; baseline capture, projection, Windows ACL handling, runtime
 sandboxing, delta validation, application, rollback, verification, and finalization
 remain delegated to their existing components.
@@ -316,19 +317,17 @@ remain unchanged.
 public CLI path: real Gemini proposal, test-only deterministic Gemini verification
 failure and rollback, isolated controlled Codex write, delta validation, transactional
 source application, and real final pytest verification. It is gated by
-`CAR_RUN_LIVE_CLI_CONTROLLED_CODEX_TESTS=1` and is not claimed as live validated until
-that command is explicitly run.
+`CAR_RUN_LIVE_CLI_CONTROLLED_CODEX_TESTS=1`. The canonical synthetic-repository CLI
+validation has been manually observed as passed. Standard CI still skips it.
 
-## Next sequence
+## Historical implementation sequence
 
-Current status: 5E3-B is locally live-verified; 5E4-A validates the untrusted
-isolated delta; and 5E4-B1 can make a reversible internal source application that
-remains pending verification. The historical roadmap entries below do not authorize
-CLI source writes or acceptance.
+The complete controlled-write chain is now implemented and manually live-validated
+through synthetic internal and public-CLI tests. The milestones below are retained
+only as historical implementation context; the safety model described above is the
+current supported behavior.
 
-1. **5E3-B — Opt-in Live Codex Isolated Write Validation.** Implemented; pending
-   explicit local execution with `CAR_RUN_LIVE_CODEX_WRITE_TESTS=1`.
-2. **5E4 — Exact Delta Extraction and Validation**
-3. **5E4 — Exact Delta Extraction and Validation**
-4. **5E5 — CAR-controlled Apply, Verification, and Rollback**
-5. **5E6 — Explicit CLI Authorization and End-to-End Flow**
+1. **5E3-B — Opt-in isolated Codex workspace-write validation**
+2. **5E4 — Exact delta extraction and validation**
+3. **5E5 — CAR-controlled application, verification, and rollback**
+4. **5E6 — Explicit CLI authorization and end-to-end flow**

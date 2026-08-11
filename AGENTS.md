@@ -115,6 +115,17 @@ Project: CAR — Capability Agent Router
   `CAR_RUN_LIVE_CODING_ESCALATION_TESTS=1`. It uses a synthetic Git repository and
   requires locally configured Gemini plus a ready locally authenticated Codex CLI;
   Codex remains ephemeral and read-only.
+- Controlled Codex write is experimental and disabled by default. It may be selected
+  only after an eligible verified Gemini-to-Codex failure, with a separate enabled
+  policy, invocation-local write authorization, explicit repository-relative file
+  scope, and a non-empty CAR-controlled verification plan. Routing and read-only
+  Codex authorization never imply write consent.
+- Controlled Codex write must remain confined to a CAR-owned isolated workspace. CAR
+  must validate the complete delta, apply permitted bytes transactionally, verify and
+  recheck source integrity, and finalize before reporting acceptance. Never add a
+  read-only-to-write chain, direct CODEX write, broad scope, or automatic retry.
+- The public controlled-write live test is opt-in only through
+  `CAR_RUN_LIVE_CLI_CONTROLLED_CODEX_TESTS=1`; standard CI must keep it skipped.
 - L0 may execute only CAR-owned, allowlisted command templates with structured
   arguments and `shell=False`; never execute command text from a user or agent.
 - Capture a byte-preserving snapshot before L0 writes. On execution,
