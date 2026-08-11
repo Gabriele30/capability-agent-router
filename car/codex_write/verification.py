@@ -66,6 +66,7 @@ class CodexSourceVerificationCoordinator:
             return self._rollback(
                 transaction, CodexWriteFailureKind.POST_VERIFICATION_INTEGRITY_FAILED, verification
             )
+        changed_paths = transaction.changed_paths
         try:
             transaction.finalize()
         except Exception:
@@ -84,7 +85,7 @@ class CodexSourceVerificationCoordinator:
             accepted=True,
             source_state=CodexSourceState.UPDATED_AND_ACCEPTED,
             verification_result=verification,
-            changed_paths=transaction.changed_paths,
+            changed_paths=changed_paths,
             message="verification passed; source transaction finalized",
         )
 

@@ -305,6 +305,7 @@ def test_b2_pass_finalizes_only_after_integrity_validation(git_repository: Path)
             policy,
         )
         assert result.accepted and result.finalized and result.verification_passed
+        assert result.changed_paths == ["README.md"]
         assert transaction.state == CodexSourceTransactionState.FINALIZED
     finally:
         assert projection.cleanup(projected).removed
