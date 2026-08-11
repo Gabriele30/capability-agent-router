@@ -152,6 +152,15 @@ same path. CAR retains `workspace-write`, `approval=never`, `--ignore-user-confi
 and no additional writable roots. This is not an elevated sandbox and does not apply
 to the separate read-only runtime; `--cd` remains explicit on POSIX as well.
 
+Further live causal validation on Windows Codex CLI 0.147.0 found that a private
+CAR temporary worktree parent could prevent Codex from writing, while the same parent
+with normal ACL inheritance enabled allowed the isolated write. Before creating a
+linked worktree, CAR therefore enables normal inherited ACLs only on its newly
+created disposable Windows worktree parent. It does not grant broad access, modify
+the source repository or `%TEMP%` ACLs, alter Codex identities, add writable roots,
+or use an elevated sandbox. This is a tested Windows compatibility measure, not a
+claim about all Codex versions or host-wide read isolation.
+
 An exit-zero process with a final message means only **Codex execution completed**.
 It does not accept a change, validate a delta, verify a task, or modify the source
 repository. Workspace lifecycle remains caller-owned so a future stage can inspect

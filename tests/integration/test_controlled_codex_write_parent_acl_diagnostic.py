@@ -42,6 +42,14 @@ class _Outcome:
     git_status: tuple[str, ...]
 
 
+class _PrivateParentDiagnosticManager(IsolatedWorkspaceManager):
+    """Recreate the historical private-parent condition only for causal validation."""
+
+    def _prepare_windows_acl(self, parent: Path, source_root: Path) -> bool:
+        del parent, source_root
+        return True
+
+
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(root), *args],
@@ -193,7 +201,7 @@ def test_parent_acl_inheritance_causal_ab_diagnostic(tmp_path: Path):
     policy = CodexWritePolicy(enabled=True)
     authorization = CodexWriteAuthorization(authorized=True)
     assert authorization.authorized
-    manager = IsolatedWorkspaceManager()
+    manager = _PrivateParentDiagnosticManager()
     projection_service = BaselineProjectionService(workspace_manager=manager)
     captured = SourceBaselineService().capture(source, policy)
     assert captured.baseline is not None

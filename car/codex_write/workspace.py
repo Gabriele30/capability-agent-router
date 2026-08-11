@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from collections.abc import Generator
@@ -9,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from re import fullmatch
+from typing import Protocol
 from uuid import uuid4
 
 from .models import CodexWriteFailureKind
@@ -49,6 +51,42 @@ class GitWorktreeRunner:
 
 
 @dataclass(frozen=True)
+class WindowsAclResult:
+    """Result of the bounded, inheritance-only Windows ACL preparation command."""
+
+    exit_code: int | None = None
+    unavailable: bool = False
+    timed_out: bool = False
+
+
+class WindowsAclRunnerProtocol(Protocol):
+    def run(self, executable: Path, target: Path, *, timeout_seconds: int) -> WindowsAclResult: ...
+
+
+class WindowsAclRunner:
+    """Structured Windows ACL boundary; it enables inheritance and nothing else."""
+
+    def run(self, executable: Path, target: Path, *, timeout_seconds: int) -> WindowsAclResult:
+        try:
+            completed = subprocess.run(
+                [str(executable), str(target), "/inheritance:e"],
+                cwd=target.parent,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                shell=False,
+                timeout=timeout_seconds,
+            )
+            return WindowsAclResult(exit_code=completed.returncode)
+        except FileNotFoundError:
+            return WindowsAclResult(unavailable=True)
+        except subprocess.TimeoutExpired:
+            return WindowsAclResult(timed_out=True)
+        except OSError:
+            return WindowsAclResult()
+
+
+@dataclass(frozen=True)
 class IsolatedCodexWorkspace:
     """Runtime-only CAR-owned identity; it is intentionally not persisted or serialized."""
 
@@ -77,10 +115,22 @@ class WorkspaceCleanupResult:
 class IsolatedWorkspaceManager:
     """Create and remove only CAR-owned detached worktrees from exact HEAD revisions."""
 
-    def __init__(self, runner: GitWorktreeRunner | None = None, timeout_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        runner: GitWorktreeRunner | None = None,
+        timeout_seconds: int = 30,
+        *,
+        acl_runner: WindowsAclRunnerProtocol | None = None,
+        is_windows: bool | None = None,
+        system_root: Path | None = None,
+    ) -> None:
         self._runner = runner or GitWorktreeRunner()
         self._timeout_seconds = timeout_seconds
+        self._acl_runner = acl_runner or WindowsAclRunner()
+        self._is_windows = os.name == "nt" if is_windows is None else is_windows
+        self._system_root = system_root
         self._owned: dict[str, IsolatedCodexWorkspace] = {}
+        self._preparing_parents: set[Path] = set()
 
     def create(self, repository: Path, revision: str | None = None) -> WorkspaceCreationResult:
         root, current_revision, failure = self._resolve_source(repository)
@@ -104,6 +154,14 @@ class IsolatedWorkspaceManager:
                 created=False,
                 failure_kind=CodexWriteFailureKind.WORKSPACE_SETUP_FAILED,
                 message="temporary workspace must be outside the source repository",
+            )
+        self._preparing_parents.add(parent)
+        if not self._prepare_windows_acl(parent, root):
+            self._discard_partial_workspace(root, workspace_path, parent)
+            return WorkspaceCreationResult(
+                created=False,
+                failure_kind=CodexWriteFailureKind.WORKSPACE_SETUP_FAILED,
+                message="failed to prepare temporary workspace permissions",
             )
         result = self._run(
             root,
@@ -133,6 +191,7 @@ class IsolatedWorkspaceManager:
             ownership_token=uuid4().hex,
         )
         self._owned[workspace.ownership_token] = workspace
+        self._preparing_parents.discard(parent)
         return WorkspaceCreationResult(created=True, workspace=workspace)
 
     def cleanup(self, workspace: IsolatedCodexWorkspace) -> WorkspaceCleanupResult:
@@ -170,6 +229,7 @@ class IsolatedWorkspaceManager:
                 message="worktree removed but CAR temporary parent could not be removed",
             )
         del self._owned[workspace.ownership_token]
+        self._preparing_parents.discard(workspace.parent)
         return WorkspaceCleanupResult(removed=True)
 
     def owns(self, workspace: IsolatedCodexWorkspace) -> bool:
@@ -245,6 +305,36 @@ class IsolatedWorkspaceManager:
     def _run(self, cwd: Path, args: list[str]) -> GitCommandResult:
         return self._runner.run(args, cwd=cwd, timeout_seconds=self._timeout_seconds)
 
+    def _prepare_windows_acl(self, parent: Path, source_root: Path) -> bool:
+        if not self._is_windows:
+            return True
+        if not self._is_owned_temporary_parent(parent, source_root):
+            return False
+        executable = self._resolve_icacls()
+        if executable is None:
+            return False
+        result = self._acl_runner.run(executable, parent, timeout_seconds=self._timeout_seconds)
+        return not result.unavailable and not result.timed_out and result.exit_code == 0
+
+    def _is_owned_temporary_parent(self, parent: Path, source_root: Path) -> bool:
+        if parent not in self._preparing_parents:
+            return False
+        if not parent.is_dir() or not parent.name.startswith("car-codex-worktree-"):
+            return False
+        if parent.parent != Path(tempfile.gettempdir()).resolve():
+            return False
+        return not _is_within(source_root, parent)
+
+    def _resolve_icacls(self) -> Path | None:
+        system_root = self._system_root
+        if system_root is None:
+            configured = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+            if configured is None:
+                return None
+            system_root = Path(configured)
+        executable = system_root / "System32" / "icacls.exe"
+        return executable if executable.is_file() else None
+
     def _discard_partial_workspace(self, root: Path, path: Path, parent: Path) -> None:
         """Best-effort cleanup for the exact CAR-owned path after a failed add."""
         if path.exists():
@@ -258,6 +348,8 @@ class IsolatedWorkspaceManager:
             # The failed setup is still reported as a structured failure. We never
             # recurse into an unknown path or touch the source worktree here.
             pass
+        finally:
+            self._preparing_parents.discard(parent)
 
 
 class IsolatedWorkspaceError(RuntimeError):
