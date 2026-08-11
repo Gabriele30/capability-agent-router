@@ -19,3 +19,11 @@ diagnoses are not verified coding success.
 Telemetry excludes task prompts, source and patch contents, repository absolute paths,
 environment and credentials, handoff bodies, provider output, and command stdout/stderr.
 It has no persistence, network exporter, or analytics endpoint in 0.7-A.
+
+## 0.7-B1 execution integration
+
+The authorized coding-flow orchestration now owns one collector per execution and
+exposes completed telemetry on `CodingFlowResult`. It observes the existing Gemini
+attempt, CAR verification, eligible escalation, and either read-only or controlled
+Codex result. It does not add provider calls, persist data, influence routing, or add
+economics. L0 remains on its separate deterministic `car task` path for now.

@@ -27,6 +27,13 @@ from car.patching.apply import SafePatchApplier
 from car.patching.models import PatchValidationPolicy
 from car.repository.models import RepositoryState
 from car.router.consultation import RoutingEvaluation
+from car.telemetry import (
+    AttemptCapability,
+    ExecutionTelemetry,
+    ExecutionTelemetryCollector,
+    FinalOutcome,
+    VerificationTelemetry,
+)
 from car.verification.models import VerificationPlan
 
 
@@ -51,6 +58,7 @@ class CodingFlowResult(BaseModel):
     coding: CodingPipelineApplicationResult
     post_failure: PostFailurePipelineResult | None = None
     outcome: CodingFlowOutcome
+    telemetry: ExecutionTelemetry | None = None
 
 
 def execute_coding_flow(
@@ -72,8 +80,20 @@ def execute_coding_flow(
     codex_write_paths: tuple[str, ...] = (),
     patch_applier: SafePatchApplier | None = None,
     verification_coordinator: CodingVerificationCoordinator | None = None,
+    telemetry_collector: ExecutionTelemetryCollector | None = None,
 ) -> CodingFlowResult:
     """Run coding once; only verified failure evidence can enter the existing Codex path."""
+    route = routing_evaluation.final_decision.route
+    collector = telemetry_collector or ExecutionTelemetryCollector()
+    collector.start_execution(
+        initial_route=route,
+        task_category=(
+            routing_evaluation.final_decision.categories[0].value
+            if routing_evaluation.final_decision.categories
+            else None
+        ),
+    )
+    gemini_attempt = collector.start_attempt(AttemptCapability.GEMINI, provider="gemini")
     coding = execute_authorized_coding_pipeline(
         repository_root=repository_root,
         routing_evaluation=routing_evaluation,
@@ -86,35 +106,79 @@ def execute_coding_flow(
         patch_applier=patch_applier,
         verification_coordinator=verification_coordinator,
     )
+    verification = _verification_telemetry(coding)
+    collector.finish_attempt(
+        gemini_attempt,
+        succeeded=coding.succeeded,
+        failure_kind=(coding.failure_kind.value if coding.failure_kind else None),
+        verification=verification,
+    )
+    if verification is not None:
+        collector.record_verification(verification)
     if coding.succeeded:
-        return CodingFlowResult(
-            attempted=True,
-            succeeded=True,
-            coding=coding,
-            outcome=CodingFlowOutcome.CODING_SUCCEEDED,
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=True,
+                succeeded=True,
+                coding=coding,
+                outcome=CodingFlowOutcome.CODING_SUCCEEDED,
+            ),
+            collector,
+            route,
+            FinalOutcome.VERIFIED_SUCCESS,
+            True,
         )
     if coding.failure_kind == CodingPipelineApplicationFailureKind.EXECUTION_DISABLED:
-        return CodingFlowResult(
-            attempted=False,
-            succeeded=False,
-            coding=coding,
-            outcome=CodingFlowOutcome.CODING_EXECUTION_DISABLED,
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=False,
+                succeeded=False,
+                coding=coding,
+                outcome=CodingFlowOutcome.CODING_EXECUTION_DISABLED,
+            ),
+            collector,
+            route,
+            FinalOutcome.UNCHANGED,
+            False,
         )
     if coding.failure_kind == CodingPipelineApplicationFailureKind.ROUTE_NOT_ELIGIBLE:
-        return CodingFlowResult(
-            attempted=False,
-            succeeded=False,
-            coding=coding,
-            outcome=CodingFlowOutcome.ROUTE_NOT_ELIGIBLE,
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=False,
+                succeeded=False,
+                coding=coding,
+                outcome=CodingFlowOutcome.ROUTE_NOT_ELIGIBLE,
+            ),
+            collector,
+            route,
+            FinalOutcome.UNCHANGED,
+            False,
         )
     pipeline = coding.pipeline_result
     if pipeline is None or pipeline.coding_attempt is None or pipeline.verification is None:
-        return CodingFlowResult(
-            attempted=coding.attempted,
-            succeeded=False,
-            coding=coding,
-            outcome=CodingFlowOutcome.CODING_FAILED_NO_ESCALATION,
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=coding.attempted,
+                succeeded=False,
+                coding=coding,
+                outcome=CodingFlowOutcome.CODING_FAILED_NO_ESCALATION,
+            ),
+            collector,
+            route,
+            FinalOutcome.FAILED,
+            False,
         )
+    target = (
+        AttemptCapability.CODEX_CONTROLLED_WRITE
+        if codex_write_policy
+        and codex_write_policy.enabled
+        and codex_write_authorization
+        and codex_write_authorization.authorized
+        and codex_write_paths
+        else AttemptCapability.CODEX_READ_ONLY
+    )
+    collector.record_escalation(AttemptCapability.GEMINI, target, reason="verification_failed")
+    codex_attempt = collector.start_attempt(target, provider="codex")
     post_failure = process_verified_coding_outcome(
         task=coding_context.task,
         routing_evaluation=routing_evaluation,
@@ -132,12 +196,67 @@ def execute_coding_flow(
         codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
         codex_write_paths=codex_write_paths,
     )
-    return CodingFlowResult(
-        attempted=coding.attempted,
-        succeeded=_controlled_write_succeeded(post_failure),
-        coding=coding,
-        post_failure=post_failure,
-        outcome=_outcome(post_failure),
+    collector.finish_attempt(codex_attempt, succeeded=_controlled_write_succeeded(post_failure))
+    source_state = getattr(getattr(post_failure, "controlled_write", None), "source_state", None)
+    final_outcome = (
+        FinalOutcome.VERIFIED_SUCCESS
+        if _controlled_write_succeeded(post_failure)
+        else (
+            FinalOutcome.UNCERTAIN
+            if source_state and source_state.value == "uncertain"
+            else FinalOutcome.RESTORED
+        )
+    )
+    return _with_telemetry(
+        CodingFlowResult(
+            attempted=coding.attempted,
+            succeeded=_controlled_write_succeeded(post_failure),
+            coding=coding,
+            post_failure=post_failure,
+            outcome=_outcome(post_failure),
+        ),
+        collector,
+        route,
+        final_outcome,
+        _controlled_write_succeeded(post_failure),
+        source_state,
+    )
+
+
+def _with_telemetry(result, collector, route, outcome, verified_success, source_state=None):
+    """Fail open only for expected telemetry-contract failures."""
+    try:
+        return result.model_copy(
+            update={
+                "telemetry": collector.finish_execution(
+                    final_route=route,
+                    final_outcome=outcome,
+                    verified_success=verified_success,
+                    source_state=source_state,
+                )
+            }
+        )
+    except (RuntimeError, ValueError):
+        return result
+
+
+def _verification_telemetry(coding):
+    verification = (
+        getattr(coding.pipeline_result, "verification", None) if coding.pipeline_result else None
+    )
+    if verification is None:
+        return None
+    checks = verification.checks
+    failures = sum(
+        check.exit_code != 0 or check.executable_not_found or check.timed_out for check in checks
+    )
+    return VerificationTelemetry(
+        attempted=verification.attempted,
+        passed=verification.passed,
+        check_count=len(checks),
+        passed_check_count=len(checks) - failures,
+        failed_check_count=failures,
+        timeout_count=sum(check.timed_out for check in checks),
     )
 
 
