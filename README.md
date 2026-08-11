@@ -178,11 +178,8 @@ not invoke a live Codex execution.
 
 ## Roadmap
 
-- Current: 0.5 — explicit, verified Gemini coding execution with rollback and
-  optional read-only Codex diagnostics.
-- Current 0.6 release scope: experimental controlled writes with CLI wiring,
+- Current: 0.6 — experimental controlled writes with CLI wiring,
   isolated projection, delta validation, transactional source application, and
   verification-gated finalization.
-- Next: controlled 0.6.0 version bump, tag, and release publication after audit sign-off.
 - Later: repository memory, deeper retrieval, VS Code integration, telemetry,
   adaptive routing, and verifiability-aware routing.

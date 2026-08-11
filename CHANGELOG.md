@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2026-08-11
 
 ### Added
 
@@ -9,6 +9,8 @@
 - Exact source baseline capture, isolated worktree projection, strict delta validation,
   transactional source application, and verification-gated finalization.
 - Opt-in live validation for both the internal chain and the public `car execute` path.
+- Acceptance-invariant hardening so only finalized B2 verification can represent
+  accepted source changes.
 
 ### Safety
 
