@@ -1,5 +1,6 @@
 """Provider-neutral, no-execution contracts for future controlled Codex writes."""
 
+from .application import AppliedCodexSourceTransaction, CodexSourceApplicationService
 from .baseline import (
     BaselineCaptureResult,
     BaselineRevalidationResult,
@@ -13,6 +14,8 @@ from .models import (
     CodexChangeValidationResult,
     CodexFileDelta,
     CodexFileIdentity,
+    CodexSourceApplicationResult,
+    CodexSourceTransactionState,
     CodexWorkspaceBaseline,
     CodexWorkspaceDelta,
     CodexWorkspaceDeltaValidationResult,
@@ -45,6 +48,7 @@ from .workspace import (
 
 __all__ = [
     "BaselineCaptureResult",
+    "AppliedCodexSourceTransaction",
     "BaselineProjectionService",
     "ControlledCodexHealthStatus",
     "ControlledCodexProcessResult",
@@ -55,6 +59,9 @@ __all__ = [
     "BaselineRevalidationResult",
     "CodexChangeSet",
     "CodexChangeValidationResult",
+    "CodexSourceApplicationResult",
+    "CodexSourceApplicationService",
+    "CodexSourceTransactionState",
     "CodexFileDelta",
     "CodexFileIdentity",
     "CodexWriteAuthorization",

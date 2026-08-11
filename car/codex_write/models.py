@@ -49,6 +49,12 @@ class CodexWriteFailureKind(StrEnum):
     SYMLINK_NOT_ALLOWED = "symlink_not_allowed"
     CHANGE_LIMIT_EXCEEDED = "change_limit_exceeded"
     WORKSPACE_INTEGRITY_FAILED = "workspace_integrity_failed"
+    WORKSPACE_CHANGED_AFTER_VALIDATION = "workspace_changed_after_validation"
+    CONTENT_IDENTITY_MISMATCH = "content_identity_mismatch"
+    SOURCE_APPLICATION_FAILED = "source_application_failed"
+    SOURCE_TARGET_UNSAFE = "source_target_unsafe"
+    CREATE_TARGET_EXISTS = "create_target_exists"
+    CREATE_PARENT_NOT_FOUND = "create_parent_not_found"
     MALFORMED_GIT_STATUS = "malformed_git_status"
     TOTAL_SIZE_EXCEEDED = "total_size_exceeded"
     UNSUPPORTED_REPOSITORY_STATE = "unsupported_repository_state"
@@ -202,6 +208,33 @@ class CodexWorkspaceDeltaValidationResult(_StrictModel):
     @field_validator("rejected_paths")
     @classmethod
     def rejected_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
+        return [normalize_repository_relative_path(value) for value in values]
+
+
+class CodexSourceTransactionState(StrEnum):
+    APPLIED_PENDING_VERIFICATION = "applied_pending_verification"
+    ROLLED_BACK = "rolled_back"
+    FINALIZED = "finalized"
+    FAILED = "failed"
+
+
+class CodexSourceApplicationResult(_StrictModel):
+    attempted: bool
+    applied: bool
+    failure_kind: CodexWriteFailureKind | None = None
+    changed_paths: list[str] = Field(default_factory=list)
+    created_paths: list[str] = Field(default_factory=list)
+    modified_paths: list[str] = Field(default_factory=list)
+    rollback_attempted: bool = False
+    rollback_succeeded: bool | None = None
+    source_revalidated: bool = False
+    workspace_revalidated: bool = False
+    changes_accepted: bool = False
+    message: str
+
+    @field_validator("changed_paths", "created_paths", "modified_paths")
+    @classmethod
+    def application_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
         return [normalize_repository_relative_path(value) for value in values]
 
 

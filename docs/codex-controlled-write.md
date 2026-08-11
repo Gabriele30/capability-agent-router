@@ -207,11 +207,38 @@ The result may be a `ValidatedCodexChangeSet`, but 5E4-A never applies it. CAR d
 not copy files to the source repository, stage or commit changes, run source
 verification, or set `changes_accepted=True` in this stage.
 
+## 5E4-B1: transactional validated source application
+
+CAR can now apply a `ValidatedCodexChangeSet` internally through
+`CodexSourceApplicationService`, but this is not wired to a CLI or coding flow.
+The service accepts only a CAR-owned projected workspace, its matching source
+baseline, and a freshly validated change set. It revalidates the source baseline,
+linked-worktree integrity, isolated delta, authorization, and exact isolated file
+SHA-256/size immediately before applying any source bytes.
+
+Only validated regular-file `MODIFY` and `CREATE` operations are supported. Paths
+must be repository-relative, contained, unprotected, and free of source or parent
+symlink traversal. A create requires an already-existing safe parent directory;
+5E4-B1 deliberately does not create directory trees. Source writes copy validated
+bytes exactly, using same-directory atomic replacement for modifications and an
+exclusive non-clobbering create for new files. No Git mutation, provider call, or
+verification command is used.
+
+Before the first source write CAR captures a target-scoped byte snapshot. The
+returned `AppliedCodexSourceTransaction` is `APPLIED_PENDING_VERIFICATION`, not an
+accepted task result. On a partial write failure it rolls back every file written by
+the transaction. Explicit rollback restores only when each applied target still has
+the exact transaction-written identity; it fails closed rather than overwriting a
+subsequent user edit. A successful filesystem application leaves
+`changes_accepted=False`; 5E4-B2 must perform CAR-controlled verification before a
+future caller may finalize the transaction.
+
 ## Next sequence
 
-Current status: 5E3-B is locally live-verified and 5E4-A validates only the
-untrusted isolated delta. Source application remains a later milestone; the
-historical roadmap entries below do not authorize source writes.
+Current status: 5E3-B is locally live-verified; 5E4-A validates the untrusted
+isolated delta; and 5E4-B1 can make a reversible internal source application that
+remains pending verification. The historical roadmap entries below do not authorize
+CLI source writes or acceptance.
 
 1. **5E3-B — Opt-in Live Codex Isolated Write Validation.** Implemented; pending
    explicit local execution with `CAR_RUN_LIVE_CODEX_WRITE_TESTS=1`.
