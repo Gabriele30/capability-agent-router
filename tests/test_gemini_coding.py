@@ -13,8 +13,9 @@ from car.router.models import Route
 
 
 class Response:
-    def __init__(self, output_text: str | None) -> None:
+    def __init__(self, output_text: str | None, usage_metadata=None) -> None:
         self.output_text = output_text
+        self.usage_metadata = usage_metadata
 
 
 class FakeError(Exception):
@@ -102,6 +103,38 @@ def test_structured_coding_transport_request_and_prompt_privacy():
     assert "super-secret-test-key" not in call["input"]
     assert "C:\\Users" not in call["input"]
     assert client.close_count == 1
+
+
+def test_structured_usage_metadata_is_preserved_without_an_extra_call():
+    metadata = type(
+        "Usage",
+        (),
+        {
+            "prompt_token_count": 10,
+            "candidates_token_count": 4,
+            "thoughts_token_count": 2,
+            "cached_content_token_count": 3,
+            "total_token_count": 16,
+        },
+    )()
+    instance, client = provider(Response(payload(), metadata))
+    instance.propose(context())
+    usage = instance.last_usage
+    assert usage and usage.input_tokens == 10 and usage.output_tokens == 4
+    assert (
+        usage.reasoning_tokens == 2 and usage.cached_input_tokens == 3 and usage.total_tokens == 16
+    )
+    assert usage.source.value == "provider_reported" and len(client.interactions.calls) == 1
+
+
+def test_missing_or_partial_usage_remains_unknown_per_dimension():
+    partial = type("Usage", (), {"prompt_token_count": 7})()
+    instance, _ = provider(Response(payload(), partial))
+    instance.propose(context())
+    assert instance.last_usage.input_tokens == 7 and instance.last_usage.output_tokens is None
+    missing, _ = provider(Response(payload()))
+    missing.propose(context())
+    assert missing.last_usage is None
 
 
 def test_repository_content_is_explicitly_untrusted():

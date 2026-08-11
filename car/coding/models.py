@@ -108,6 +108,7 @@ class CodingAttemptResult(BaseModel):
     succeeded: bool
     proposal: CodingProposal | None = None
     error_kind: ProviderErrorKind | None = None
+    usage: object | None = None
 
     @model_validator(mode="after")
     def result_fields_must_be_consistent(self) -> "CodingAttemptResult":

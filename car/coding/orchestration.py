@@ -39,6 +39,7 @@ def attempt_coding(
         attempted=True,
         succeeded=True,
         proposal=proposal,
+        usage=getattr(provider, "last_usage", None),
     )
 
 

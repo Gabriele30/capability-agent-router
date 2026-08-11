@@ -112,6 +112,11 @@ def execute_coding_flow(
         succeeded=coding.succeeded,
         failure_kind=(coding.failure_kind.value if coding.failure_kind else None),
         verification=verification,
+        usage=(
+            coding.pipeline_result.coding_attempt.usage
+            if coding.pipeline_result and coding.pipeline_result.coding_attempt
+            else None
+        ),
     )
     if verification is not None:
         collector.record_verification(verification)

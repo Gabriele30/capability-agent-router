@@ -22,6 +22,7 @@ from car.providers.models import (
     ProviderHealth,
     ProviderStatus,
 )
+from car.telemetry.models import TokenUsage, UsageSource
 
 
 class GeminiCodingProvider:
@@ -41,6 +42,7 @@ class GeminiCodingProvider:
         self._client_factory = client_factory
         self._sleep = sleep_fn
         self._health_provider = GeminiProvider(config, environment=self._environment)
+        self.last_usage: TokenUsage | None = None
 
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(supports_code_changes=True)
@@ -96,6 +98,7 @@ class GeminiCodingProvider:
             output = getattr(response, "output_text", None)
             if not output:
                 raise ValueError("empty structured response")
+            self.last_usage = _usage_from_response(response)
             return CodingProposal.model_validate_json(output)
         except CodingProviderFailure:
             raise
@@ -149,3 +152,26 @@ class GeminiCodingProvider:
             "Return JSON matching the requested CodingProposal schema. Include exactly one "
             "ProposedFileChange per affected file. Do not wrap patch values in Markdown fences."
         )
+
+
+def _usage_from_response(response: object) -> TokenUsage | None:
+    """Map only SDK-provided usage metadata; absent fields stay unknown."""
+    metadata = getattr(response, "usage_metadata", None)
+    if metadata is None:
+        return None
+
+    def value(*names: str) -> int | None:
+        for name in names:
+            candidate = getattr(metadata, name, None)
+            if isinstance(candidate, int) and candidate >= 0:
+                return candidate
+        return None
+
+    return TokenUsage(
+        input_tokens=value("prompt_token_count"),
+        output_tokens=value("candidates_token_count", "response_token_count"),
+        reasoning_tokens=value("thoughts_token_count"),
+        cached_input_tokens=value("cached_content_token_count"),
+        total_tokens=value("total_token_count"),
+        source=UsageSource.PROVIDER_REPORTED,
+    )
