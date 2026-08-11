@@ -1,0 +1,34 @@
+"""Privacy-safe results for internal benchmark strategy execution."""
+
+from enum import StrEnum
+
+from pydantic import BaseModel
+
+from car.benchmark.models import BenchmarkStrategy
+from car.economics.models import ExecutionCost
+from car.telemetry.models import ExecutionTelemetry, FinalOutcome
+
+
+class BenchmarkFailureKind(StrEnum):
+    TASK_FAILED = "task_failed"
+    EXECUTION_FAILED = "execution_failed"
+    INVARIANT_FAILED = "invariant_failed"
+
+
+class BenchmarkInvariantError(RuntimeError):
+    """Signals invalid benchmark setup without exposing task/provider failure."""
+
+
+class BenchmarkTaskResult(BaseModel):
+    case_id: str
+    strategy: BenchmarkStrategy
+    verified_success: bool
+    duration_ms: int
+    attempt_count: int
+    telemetry: ExecutionTelemetry | None = None
+    reference_cost: ExecutionCost | None = None
+    cost_complete: bool = False
+    final_outcome: FinalOutcome | None = None
+    source_state: str | None = None
+    failure_kind: BenchmarkFailureKind | None = None
+    failure_reason: str | None = None

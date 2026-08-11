@@ -1,5 +1,7 @@
 import hashlib
+import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -13,7 +15,7 @@ class BenchmarkWorkspaceSet:
         self.workspaces = {}
         for strategy in BenchmarkStrategy:
             target = self.root / strategy.value
-            shutil.copytree(self.fixture, target, ignore=shutil.ignore_patterns(".git"))
+            shutil.copytree(self.fixture, target)
             self.workspaces[strategy] = target
         self.baseline = self.identity(self.fixture)
         if any(self.identity(path) != self.baseline for path in self.workspaces.values()):
@@ -30,4 +32,11 @@ class BenchmarkWorkspaceSet:
 
     def cleanup(self) -> None:
         if self.root.exists():
-            shutil.rmtree(self.root)
+            shutil.rmtree(self.root, onexc=self._make_writable_and_retry)
+
+    @staticmethod
+    def _make_writable_and_retry(function, path, error) -> None:
+        if not isinstance(error, PermissionError):
+            raise error
+        os.chmod(path, stat.S_IWRITE)
+        function(path)

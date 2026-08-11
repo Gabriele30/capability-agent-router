@@ -1,7 +1,10 @@
 """Compose authorized coding execution with existing verified-failure handling."""
 
+from __future__ import annotations
+
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -35,6 +38,9 @@ from car.telemetry import (
     VerificationTelemetry,
 )
 from car.verification.models import VerificationPlan
+
+if TYPE_CHECKING:
+    from car.codex_write.pipeline import ControlledCodexWritePipeline
 
 
 class CodingFlowOutcome(StrEnum):
@@ -81,6 +87,7 @@ def execute_coding_flow(
     patch_applier: SafePatchApplier | None = None,
     verification_coordinator: CodingVerificationCoordinator | None = None,
     telemetry_collector: ExecutionTelemetryCollector | None = None,
+    controlled_write_pipeline: ControlledCodexWritePipeline | None = None,
 ) -> CodingFlowResult:
     """Run coding once; only verified failure evidence can enter the existing Codex path."""
     route = routing_evaluation.final_decision.route
@@ -200,6 +207,7 @@ def execute_coding_flow(
         codex_write_policy=codex_write_policy or CodexWritePolicy(),
         codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
         codex_write_paths=codex_write_paths,
+        controlled_write_pipeline=controlled_write_pipeline,
     )
     collector.finish_attempt(codex_attempt, succeeded=_controlled_write_succeeded(post_failure))
     source_state = getattr(getattr(post_failure, "controlled_write", None), "source_state", None)
