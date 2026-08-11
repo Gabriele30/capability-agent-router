@@ -131,6 +131,8 @@ class ControlledCodexWritePipeline:
                             application_result=application,
                             source_state=CodexSourceState.UNCERTAIN
                             if application.rollback_attempted and not application.rollback_succeeded
+                            else CodexSourceState.RESTORED
+                            if application.rollback_attempted
                             else CodexSourceState.UNCHANGED,
                         )
                     else:
