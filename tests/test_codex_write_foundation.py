@@ -8,13 +8,18 @@ from car.codex_write.models import (
     CodexChangeSet,
     CodexFileDelta,
     CodexFileIdentity,
+    CodexSourceApplicationResult,
+    CodexSourceState,
     CodexWorkspaceBaseline,
     CodexWriteAuthorization,
     CodexWriteFailureKind,
     CodexWritePolicy,
+    ControlledCodexWritePipelineResult,
+    ControlledCodexWritePipelineStage,
     baseline_matches,
     validate_change_set,
 )
+from car.codex_write.runtime_models import ControlledCodexWriteResult
 
 
 def _baseline() -> CodexWorkspaceBaseline:
@@ -95,6 +100,30 @@ def test_baseline_mismatch_represents_concurrent_user_change():
 def test_models_are_data_only_and_do_not_accept_environment_or_secrets():
     with pytest.raises(ValidationError):
         CodexWritePolicy(environment={"GEMINI_API_KEY": "secret"})
+
+
+def test_acceptance_models_reject_unverified_or_runtime_acceptance():
+    with pytest.raises(ValidationError):
+        CodexSourceApplicationResult(
+            attempted=True,
+            applied=True,
+            changes_accepted=True,
+            message="application cannot finalize",
+        )
+    with pytest.raises(ValidationError):
+        ControlledCodexWritePipelineResult(
+            attempted=True,
+            accepted=True,
+            source_state=CodexSourceState.UPDATED_AND_ACCEPTED,
+            terminal_stage=ControlledCodexWritePipelineStage.FINALIZED,
+            message="invalid without B2 verification",
+        )
+    with pytest.raises(ValidationError):
+        ControlledCodexWriteResult(
+            attempted=True,
+            process_succeeded=True,
+            changes_accepted=True,
+        )
 
 
 def test_foundation_validation_has_no_execution_side_effects(monkeypatch):

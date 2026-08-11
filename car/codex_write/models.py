@@ -261,6 +261,12 @@ class CodexSourceApplicationResult(_StrictModel):
     def application_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
         return [normalize_repository_relative_path(value) for value in values]
 
+    @model_validator(mode="after")
+    def application_never_accepts_changes(self) -> "CodexSourceApplicationResult":
+        if self.changes_accepted:
+            raise ValueError("source application cannot accept changes before verification")
+        return self
+
 
 class CodexSourceVerificationResult(_StrictModel):
     attempted: bool
@@ -316,6 +322,17 @@ class ControlledCodexWritePipelineResult(_StrictModel):
     @classmethod
     def pipeline_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
         return [normalize_repository_relative_path(value) for value in values]
+
+    @model_validator(mode="after")
+    def accepted_requires_finalized_verification(self) -> "ControlledCodexWritePipelineResult":
+        if self.accepted and not (
+            self.source_state == CodexSourceState.UPDATED_AND_ACCEPTED
+            and self.terminal_stage == ControlledCodexWritePipelineStage.FINALIZED
+            and self.verification_result is not None
+            and self.verification_result.accepted
+        ):
+            raise ValueError("accepted pipeline result requires finalized verification")
+        return self
 
 
 def validate_change_set(

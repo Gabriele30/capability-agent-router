@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from car.coding.models import normalize_repository_relative_path
 from car.escalation.models import CodexHandoff
@@ -72,3 +72,9 @@ class ControlledCodexWriteResult(_StrictRuntimeModel):
     stderr: str = ""
     baseline_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     baseline_head_oid: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
+
+    @model_validator(mode="after")
+    def runtime_never_accepts_changes(self) -> "ControlledCodexWriteResult":
+        if self.changes_accepted:
+            raise ValueError("controlled runtime cannot accept source changes")
+        return self

@@ -16,6 +16,7 @@ from car.codex.models import (
 )
 from car.codex_write.models import (
     CodexSourceState,
+    CodexSourceVerificationResult,
     CodexWriteAuthorization,
     CodexWritePolicy,
     ControlledCodexWritePipelineResult,
@@ -86,6 +87,19 @@ class FakeControlledPipeline:
                 ControlledCodexWritePipelineStage.FINALIZED
                 if self.accepted
                 else ControlledCodexWritePipelineStage.ROLLED_BACK
+            ),
+            verification_result=(
+                CodexSourceVerificationResult(
+                    attempted=True,
+                    verification_passed=True,
+                    post_verification_integrity_valid=True,
+                    finalized=True,
+                    accepted=True,
+                    source_state=CodexSourceState.UPDATED_AND_ACCEPTED,
+                    message="synthetic finalized verification",
+                )
+                if self.accepted
+                else None
             ),
             message="synthetic controlled result",
         )
