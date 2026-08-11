@@ -15,7 +15,9 @@ from .models import (
     CodexFileDelta,
     CodexFileIdentity,
     CodexSourceApplicationResult,
+    CodexSourceState,
     CodexSourceTransactionState,
+    CodexSourceVerificationResult,
     CodexWorkspaceBaseline,
     CodexWorkspaceDelta,
     CodexWorkspaceDeltaValidationResult,
@@ -39,6 +41,7 @@ from .runtime_models import (
     ControlledCodexWriteRequest,
     ControlledCodexWriteResult,
 )
+from .verification import CodexSourceVerificationCoordinator
 from .workspace import (
     IsolatedCodexWorkspace,
     IsolatedWorkspaceManager,
@@ -60,8 +63,11 @@ __all__ = [
     "CodexChangeSet",
     "CodexChangeValidationResult",
     "CodexSourceApplicationResult",
+    "CodexSourceState",
     "CodexSourceApplicationService",
     "CodexSourceTransactionState",
+    "CodexSourceVerificationCoordinator",
+    "CodexSourceVerificationResult",
     "CodexFileDelta",
     "CodexFileIdentity",
     "CodexWriteAuthorization",

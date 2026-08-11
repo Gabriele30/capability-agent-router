@@ -233,6 +233,29 @@ subsequent user edit. A successful filesystem application leaves
 `changes_accepted=False`; 5E4-B2 must perform CAR-controlled verification before a
 future caller may finalize the transaction.
 
+## 5E4-B2: verification-gated source finalization
+
+`CodexSourceVerificationCoordinator` now consumes only a matching B1 transaction
+in `APPLIED_PENDING_VERIFICATION`. It requires a non-empty CAR-selected
+`VerificationPlan`, uses the shared `VerificationEngine`, and accepts only the
+existing read-only Ruff or pytest command families. It verifies the real source
+repository with the existing pytest environment hygiene; it never invokes Codex,
+Gemini, a provider, a shell, or a Git mutation command.
+
+Before and after verification, CAR checks the transaction-written file identities
+and exact source integrity: captured HEAD, branch, index, pre-existing dirty state,
+and untracked state may differ only by the B1 transaction targets. A passing test
+command is therefore insufficient if it stages, changes Git state, writes another
+file, creates an artifact, or changes a transaction target. Such a mismatch is not
+accepted and invokes identity-aware rollback when safe.
+
+Only verification pass plus post-verification integrity pass plus a successful
+`transaction.finalize()` produces `accepted=True`. Verification failure, timeout,
+an empty plan, an unsafe command, or integrity failure leaves changes unaccepted
+and attempts rollback. If rollback detects a later user edit it preserves that edit
+and reports an uncertain source state. This remains an internal foundation: no CLI
+path applies or finalizes controlled Codex writes.
+
 ## Next sequence
 
 Current status: 5E3-B is locally live-verified; 5E4-A validates the untrusted

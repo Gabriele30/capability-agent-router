@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from .baseline import SourceBaseline, SourceBaselineService
 from .delta import CodexWorkspaceDeltaDetector, CodexWorkspaceDeltaValidator
 from .models import (
     CodexChangeOperation,
+    CodexFileIdentity,
     CodexSourceApplicationResult,
     CodexSourceTransactionState,
     CodexWriteAuthorization,
@@ -30,11 +32,20 @@ class AppliedCodexSourceTransaction:
     """In-memory target snapshot and reversible source state pending future verification."""
 
     def __init__(
-        self, root: Path, snapshot: TargetSnapshot, written_hashes: dict[Path, str]
+        self,
+        root: Path,
+        snapshot: TargetSnapshot,
+        written_hashes: dict[Path, str],
+        source_baseline: SourceBaseline,
+        branch: str,
+        index_digest: str,
     ) -> None:
         self.root = root
         self._snapshot = snapshot
         self._written_hashes = written_hashes
+        self._source_baseline = source_baseline
+        self._branch = branch
+        self._index_digest = index_digest
         self.state = CodexSourceTransactionState.APPLIED_PENDING_VERIFICATION
 
     def rollback(self) -> bool:
@@ -64,6 +75,50 @@ class AppliedCodexSourceTransaction:
         if self.state == CodexSourceTransactionState.APPLIED_PENDING_VERIFICATION:
             self._snapshot = TargetSnapshot(root=self.root, files={})
             self.state = CodexSourceTransactionState.FINALIZED
+
+    @property
+    def changed_paths(self) -> list[str]:
+        return [path.as_posix() for path in self._snapshot.files]
+
+    def applied_identities_match(self) -> bool:
+        """Ensure all targets still contain exactly the bytes written by B1."""
+        try:
+            for relative, expected in self._written_hashes.items():
+                target = self.root / relative
+                info = target.lstat()
+                if not stat.S_ISREG(info.st_mode) or _digest(target) != expected:
+                    return False
+            return True
+        except OSError:
+            return False
+
+    def source_integrity_matches(self, policy: CodexWritePolicy) -> bool:
+        """Allow only the expected B1 target delta over the exact captured source state."""
+        if (
+            _git_branch(self.root) != self._branch
+            or _git_index_digest(self.root) != self._index_digest
+        ):
+            return False
+        captured = SourceBaselineService().capture(self.root, policy)
+        if not captured.captured or captured.baseline is None:
+            return False
+        observed = {item.path: item for item in captured.baseline.files}
+        expected = {item.path: item for item in self._source_baseline.files}
+        targets = {path.as_posix() for path in self._snapshot.files}
+        if set(observed) - targets != set(expected) - targets:
+            return False
+        if any(observed[path] != expected[path] for path in set(expected) - targets):
+            return False
+        for relative, snapshot in self._snapshot.files.items():
+            path = relative.as_posix()
+            identity = observed.get(path)
+            if snapshot.existed:
+                before = expected.get(path)
+                if identity is None or before is None or not _same_git_metadata(identity, before):
+                    return False
+            elif identity is None or not identity.untracked:
+                return False
+        return self.applied_identities_match()
 
 
 class CodexSourceApplicationService:
@@ -195,7 +250,17 @@ class CodexSourceApplicationService:
                 workspace_revalidated=True,
             ), None
 
-        transaction = AppliedCodexSourceTransaction(root, snapshot, {})
+        branch = _git_branch(root)
+        index_digest = _git_index_digest(root)
+        if branch is None or index_digest is None:
+            return _failure(
+                CodexWriteFailureKind.SOURCE_APPLICATION_FAILED,
+                source_revalidated=True,
+                workspace_revalidated=True,
+            ), None
+        transaction = AppliedCodexSourceTransaction(
+            root, snapshot, {}, source_baseline, branch, index_digest
+        )
         changed: list[str] = []
         created: list[str] = []
         modified: list[str] = []
@@ -358,3 +423,40 @@ def _digest(path: Path) -> str:
         for chunk in iter(lambda: source.read(_CHUNK_SIZE), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _git_branch(root: Path) -> str | None:
+    return _git_output(root, ["symbolic-ref", "--short", "-q", "HEAD"])
+
+
+def _git_index_digest(root: Path) -> str | None:
+    output = _git_output(root, ["ls-files", "-s", "-z"], raw=True)
+    return hashlib.sha256(output).hexdigest() if output is not None else None
+
+
+def _git_output(root: Path, args: list[str], *, raw: bool = False) -> str | bytes | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            check=False,
+            shell=False,
+            text=not raw,
+            encoding=None if raw else "utf-8",
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout if raw else completed.stdout.strip()
+
+
+def _same_git_metadata(current: CodexFileIdentity, before: CodexFileIdentity) -> bool:
+    return (
+        current.path == before.path
+        and current.tracked == before.tracked
+        and current.staged == before.staged
+        and current.is_symlink == before.is_symlink
+        and current.protected == before.protected
+    )

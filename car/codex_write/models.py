@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from car.coding.models import normalize_repository_relative_path
 from car.patching.models import PatchValidationPolicy
@@ -55,6 +55,11 @@ class CodexWriteFailureKind(StrEnum):
     SOURCE_TARGET_UNSAFE = "source_target_unsafe"
     CREATE_TARGET_EXISTS = "create_target_exists"
     CREATE_PARENT_NOT_FOUND = "create_parent_not_found"
+    VERIFICATION_REQUIRED = "verification_required"
+    PRE_VERIFICATION_INTEGRITY_FAILED = "pre_verification_integrity_failed"
+    POST_VERIFICATION_INTEGRITY_FAILED = "post_verification_integrity_failed"
+    VERIFICATION_TIMEOUT = "verification_timeout"
+    FINALIZATION_FAILED = "finalization_failed"
     MALFORMED_GIT_STATUS = "malformed_git_status"
     TOTAL_SIZE_EXCEEDED = "total_size_exceeded"
     UNSUPPORTED_REPOSITORY_STATE = "unsupported_repository_state"
@@ -218,6 +223,13 @@ class CodexSourceTransactionState(StrEnum):
     FAILED = "failed"
 
 
+class CodexSourceState(StrEnum):
+    UPDATED_AND_ACCEPTED = "updated_and_accepted"
+    RESTORED = "restored"
+    UNCHANGED = "unchanged"
+    UNCERTAIN = "uncertain"
+
+
 class CodexSourceApplicationResult(_StrictModel):
     attempted: bool
     applied: bool
@@ -236,6 +248,37 @@ class CodexSourceApplicationResult(_StrictModel):
     @classmethod
     def application_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
         return [normalize_repository_relative_path(value) for value in values]
+
+
+class CodexSourceVerificationResult(_StrictModel):
+    attempted: bool
+    verification_passed: bool = False
+    post_verification_integrity_valid: bool = False
+    finalized: bool = False
+    accepted: bool = False
+    rollback_attempted: bool = False
+    rollback_succeeded: bool | None = None
+    source_state: CodexSourceState
+    failure_kind: CodexWriteFailureKind | None = None
+    verification_result: object | None = None
+    changed_paths: list[str] = Field(default_factory=list)
+    message: str
+
+    @field_validator("changed_paths")
+    @classmethod
+    def verification_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
+        return [normalize_repository_relative_path(value) for value in values]
+
+    @model_validator(mode="after")
+    def accepted_requires_complete_finalization(self) -> "CodexSourceVerificationResult":
+        if self.accepted and not (
+            self.verification_passed
+            and self.post_verification_integrity_valid
+            and self.finalized
+            and not self.rollback_attempted
+        ):
+            raise ValueError("accepted source changes require finalized verified integrity")
+        return self
 
 
 def validate_change_set(
