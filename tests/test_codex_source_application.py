@@ -139,6 +139,8 @@ def test_staged_and_unstaged_source_index_is_preserved(git_repository: Path):
     _git(git_repository, "add", "README.md")
     path.write_bytes(b"working C\n")
     index_before = _git(git_repository, "diff", "--cached", "--binary").stdout
+    head_before = _git(git_repository, "rev-parse", "HEAD").stdout
+    branch_before = _git(git_repository, "branch", "--show-current").stdout
     baseline, projected, manager, projection, policy, validated, detector = _prepared(
         git_repository, "README.md", b"Codex D\n"
     )
@@ -149,9 +151,13 @@ def test_staged_and_unstaged_source_index_is_preserved(git_repository: Path):
         assert result.applied and transaction is not None
         assert path.read_bytes() == b"Codex D\n"
         assert _git(git_repository, "diff", "--cached", "--binary").stdout == index_before
+        assert _git(git_repository, "rev-parse", "HEAD").stdout == head_before
+        assert _git(git_repository, "branch", "--show-current").stdout == branch_before
         assert transaction.rollback()
         assert path.read_bytes() == b"working C\n"
         assert _git(git_repository, "diff", "--cached", "--binary").stdout == index_before
+        assert _git(git_repository, "rev-parse", "HEAD").stdout == head_before
+        assert _git(git_repository, "branch", "--show-current").stdout == branch_before
     finally:
         assert projection.cleanup(projected).removed
 
