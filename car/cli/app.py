@@ -25,6 +25,7 @@ from car.application.execution_gateway import (
 from car.application.routing import build_gemini_provider, evaluate_analysis
 from car.cli.presentation import present_execution_result
 from car.codex.runtime import LocalCodexRuntime
+from car.codex_write.models import CodexWriteAuthorization
 from car.coding.gemini import GeminiCodingProvider
 from car.coding.models import (
     CodingFileContext,
@@ -472,6 +473,19 @@ def execute(
         bool,
         typer.Option("--codex-analysis", help="Enable optional read-only Codex fallback analysis."),
     ] = False,
+    allow_codex_write: Annotated[
+        bool,
+        typer.Option(
+            "--allow-codex-write",
+            help="Allow verified Codex changes for this invocation only within explicit paths.",
+        ),
+    ] = False,
+    codex_write_paths: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--codex-write-path", help="Repository-relative file Codex may modify; repeat."
+        ),
+    ] = None,
 ) -> None:
     """Preview a scoped coding execution; authorization and verification are mandatory."""
     try:
@@ -498,6 +512,13 @@ def execute(
         console.print("Planning route selected; no repository mutation will be performed.")
         return
     selected_arguments = files or []
+    write_arguments = codex_write_paths or []
+    if allow_codex_write and not write_arguments:
+        console.print("Controlled Codex write requires at least one --codex-write-path.")
+        raise typer.Exit(code=2)
+    if write_arguments and not allow_codex_write:
+        console.print("--codex-write-path requires --allow-codex-write.")
+        raise typer.Exit(code=2)
     verification_checks = verify or []
     if not selected_arguments:
         console.print(
@@ -506,6 +527,9 @@ def execute(
         raise typer.Exit(code=2)
     try:
         selected = _selected_coding_files(repository.root, selected_arguments)
+        write_selected = (
+            _selected_coding_files(repository.root, write_arguments) if write_arguments else []
+        )
     except typer.BadParameter as error:
         console.print(f"[red]Error:[/] {error}")
         raise typer.Exit(code=2) from error
@@ -520,6 +544,12 @@ def execute(
     _print_execute_preview(
         request, repository, evaluation, selected, verification_checks, codex_analysis
     )
+    if allow_codex_write:
+        console.print("\nControlled Codex write: ENABLED FOR THIS RUN")
+        console.print("Authorized paths:")
+        for item in write_selected:
+            console.print(f"- {item.path}")
+        console.print("CAR validates and verifies isolated Codex changes before acceptance.")
     authorized = yes
     if not yes:
         try:
@@ -557,6 +587,9 @@ def execute(
             coding_execution_policy=CodingPipelineExecutionPolicy(enabled=True),
             handoff_policy=HandoffPolicy(),
             codex_execution_policy=CodexExecutionPolicy(enabled=codex_analysis),
+            codex_write_policy=config.codex_write,
+            codex_write_authorization=CodexWriteAuthorization(authorized=allow_codex_write),
+            codex_write_paths=tuple(item.path for item in write_selected),
         ),
         CodingFlowAuthorization(authorized=True),
     )

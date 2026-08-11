@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from car.codex_write.models import CodexWritePolicy
 from car.providers.gemini import GeminiProviderConfig
 from car.router.models import RoutingPolicy, UserMode
 
@@ -28,6 +29,7 @@ class CarConfig(BaseModel):
     routing_policy: RoutingPolicy = Field(default_factory=RoutingPolicy)
     l0: L0Config = Field(default_factory=L0Config)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
+    codex_write: CodexWritePolicy = Field(default_factory=CodexWritePolicy)
 
     @model_validator(mode="before")
     @classmethod
@@ -39,5 +41,6 @@ class CarConfig(BaseModel):
             migrated.setdefault("routing_policy", {})
             migrated.setdefault("l0", {})
             migrated.setdefault("providers", {})
+            migrated.setdefault("codex_write", {})
             return migrated
         return value

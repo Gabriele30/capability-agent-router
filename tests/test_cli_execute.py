@@ -221,3 +221,58 @@ def test_execute_provider_unavailable_reports_unchanged_workspace(
     assert "Workspace: unchanged" in result.stdout and "Task: UNRESOLVED" in result.stdout
     assert provider.calls == runtime.health_calls == runtime.execute_calls == 0
     assert target.read_bytes() == b"value = 1\n"
+
+
+def test_execute_maps_invocation_scoped_codex_write_authorization_and_paths(
+    git_repository: Path, monkeypatch
+):
+    target = git_repository / "sample.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    provider, runtime = FakeProvider(_proposal("value = 1\n")), FakeRuntime()
+    _patch_dependencies(monkeypatch, provider, runtime, VerificationStatus.PASSED)
+    captured = {}
+    original_execute = CodingFlowGateway.execute
+
+    def capture_execute(self, request, authorization=None):
+        captured["request"] = request
+        return original_execute(self, request, authorization)
+
+    monkeypatch.setattr(CodingFlowGateway, "execute", capture_execute)
+    monkeypatch.chdir(git_repository)
+
+    result = runner.invoke(
+        app,
+        [
+            "execute",
+            "Fix CSS spacing",
+            "--file",
+            "sample.py",
+            "--verify",
+            "ruff",
+            "--yes",
+            "--allow-codex-write",
+            "--codex-write-path",
+            "sample.py",
+        ],
+    )
+
+    request = captured["request"]
+    assert result.exit_code == 0 and "ENABLED FOR THIS RUN" in result.stdout
+    assert request.codex_write_authorization.authorized is True
+    assert request.codex_write_paths == ("sample.py",)
+    assert request.codex_write_policy.enabled is False
+
+
+def test_execute_rejects_incomplete_or_unconsented_codex_write_flags(
+    git_repository: Path, monkeypatch
+):
+    monkeypatch.chdir(git_repository)
+
+    missing_scope = runner.invoke(app, ["execute", "Fix CSS spacing", "--allow-codex-write"])
+    missing_consent = runner.invoke(
+        app, ["execute", "Fix CSS spacing", "--codex-write-path", "sample.py"]
+    )
+
+    assert missing_scope.exit_code == missing_consent.exit_code == 2
+    assert "requires at least one --codex-write-path" in missing_scope.stdout
+    assert "requires --allow-codex-write" in missing_consent.stdout

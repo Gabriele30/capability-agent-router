@@ -16,6 +16,7 @@ from car.codex.models import (
     CodexRuntimeHealth,
     CodexRuntimeHealthStatus,
 )
+from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.coding.base import CodingProviderFailure
 from car.coding.models import (
     CodingFileContext,
@@ -243,6 +244,89 @@ def test_coding_success_never_calls_codex(tmp_path: Path, route: Route):
     assert result.succeeded and result.outcome == CodingFlowOutcome.CODING_SUCCEEDED
     assert result.post_failure is None and runtime.health_calls == runtime.execute_calls == 0
     assert target.read_text(encoding="utf-8") == "value = 2\n"
+
+
+def test_gemini_pipeline_does_not_receive_controlled_write_configuration(
+    monkeypatch, tmp_path: Path
+):
+    """Controlled-write consent belongs only to the verified post-failure boundary."""
+    target = tmp_path / "a.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    received: dict[str, object] = {}
+    original = coding_flow.execute_authorized_coding_pipeline
+
+    def capture_pipeline(**kwargs):
+        received.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(coding_flow, "execute_authorized_coding_pipeline", capture_pipeline)
+    result = _flow(
+        tmp_path,
+        Route.GEMINI,
+        FakeProvider(_proposal("value = 1\n")),
+        FakeCodexRuntime(tmp_path),
+        codex_write_policy=CodexWritePolicy(enabled=True),
+        codex_write_authorization=CodexWriteAuthorization(authorized=True),
+        codex_write_paths=("a.py",),
+        verification_coordinator=CodingVerificationCoordinator(
+            FakeVerificationEngine(VerificationStatus.PASSED)
+        ),
+    )
+
+    assert result.succeeded
+    assert not {
+        "codex_write_policy",
+        "codex_write_authorization",
+        "codex_write_paths",
+    }.intersection(received)
+
+
+@pytest.mark.parametrize(
+    ("policy", "authorization", "paths"),
+    [
+        (None, None, ()),
+        (CodexWritePolicy(enabled=True), CodexWriteAuthorization(authorized=True), ("a.py",)),
+    ],
+)
+def test_verified_post_failure_receives_controlled_write_context_at_application_boundary(
+    monkeypatch, tmp_path: Path, policy, authorization, paths
+):
+    target = tmp_path / "a.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    received: dict[str, object] = {}
+    original = coding_flow.process_verified_coding_outcome
+
+    def capture_post_failure(**kwargs):
+        received.update(kwargs)
+        safe_kwargs = dict(kwargs)
+        safe_kwargs.update(
+            codex_write_policy=CodexWritePolicy(),
+            codex_write_authorization=CodexWriteAuthorization(),
+            codex_write_paths=(),
+        )
+        return original(**safe_kwargs)
+
+    monkeypatch.setattr(coding_flow, "process_verified_coding_outcome", capture_post_failure)
+    runtime = FakeCodexRuntime(tmp_path)
+    result = _flow(
+        tmp_path,
+        Route.GEMINI_TO_CODEX,
+        FakeProvider(_proposal("value = 1\n")),
+        runtime,
+        codex_write_policy=policy,
+        codex_write_authorization=authorization,
+        codex_write_paths=paths,
+        verification_coordinator=CodingVerificationCoordinator(
+            FakeVerificationEngine(VerificationStatus.FAILED)
+        ),
+    )
+
+    assert result.post_failure is not None
+    assert result.post_failure.selected_codex_mode == "read_only"
+    assert received["codex_write_policy"] == (policy or CodexWritePolicy())
+    assert received["codex_write_authorization"] == (authorization or CodexWriteAuthorization())
+    assert received["codex_write_paths"] == paths
+    assert runtime.execute_calls == 1
 
 
 def test_gemini_failure_and_verified_failure_do_not_escalate(tmp_path: Path):

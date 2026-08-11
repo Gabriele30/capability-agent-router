@@ -18,6 +18,7 @@ from car.application.post_failure import (
     process_verified_coding_outcome,
 )
 from car.codex.runtime import CodexRuntime
+from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.coding.base import CodingProvider
 from car.coding.models import CodingExecutionPolicy, CodingTaskContext
 from car.coding.verification import CodingVerificationCoordinator
@@ -64,6 +65,9 @@ def execute_coding_flow(
     handoff_policy: HandoffPolicy | None,
     codex_runtime: CodexRuntime,
     codex_execution_policy: CodexExecutionPolicy | None,
+    codex_write_policy: CodexWritePolicy | None = None,
+    codex_write_authorization: CodexWriteAuthorization | None = None,
+    codex_write_paths: tuple[str, ...] = (),
     patch_applier: SafePatchApplier | None = None,
     verification_coordinator: CodingVerificationCoordinator | None = None,
 ) -> CodingFlowResult:
@@ -122,6 +126,9 @@ def execute_coding_flow(
         codex_execution_policy=codex_execution_policy,
         handoff_policy=handoff_policy,
         verification_plan=verification_plan,
+        codex_write_policy=codex_write_policy or CodexWritePolicy(),
+        codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
+        codex_write_paths=codex_write_paths,
     )
     return CodingFlowResult(
         attempted=coding.attempted,

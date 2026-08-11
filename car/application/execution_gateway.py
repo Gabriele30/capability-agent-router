@@ -9,6 +9,7 @@ from car.application.codex import CodexExecutionPolicy
 from car.application.coding_execution import CodingPipelineExecutionPolicy
 from car.application.coding_flow import CodingFlowResult, execute_coding_flow
 from car.codex.runtime import CodexRuntime
+from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.coding.base import CodingProvider
 from car.coding.models import CodingExecutionPolicy, CodingTaskContext
 from car.coding.verification import CodingVerificationCoordinator
@@ -45,6 +46,9 @@ class CodingFlowExecutionRequest(BaseModel):
     coding_execution_policy: CodingPipelineExecutionPolicy | None
     handoff_policy: HandoffPolicy | None
     codex_execution_policy: CodexExecutionPolicy | None
+    codex_write_policy: CodexWritePolicy | None = None
+    codex_write_authorization: CodexWriteAuthorization | None = None
+    codex_write_paths: tuple[str, ...] = ()
 
 
 class CodingFlowGatewayResult(BaseModel):
@@ -97,6 +101,9 @@ class CodingFlowGateway:
             handoff_policy=request.handoff_policy,
             codex_runtime=self._codex_runtime,
             codex_execution_policy=request.codex_execution_policy,
+            codex_write_policy=request.codex_write_policy,
+            codex_write_authorization=request.codex_write_authorization,
+            codex_write_paths=request.codex_write_paths,
             patch_applier=self._patch_applier,
             verification_coordinator=self._verification_coordinator,
         )
