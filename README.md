@@ -16,7 +16,9 @@ provider evidence before selecting a route.
 
 CAR is under active development. Scoped Gemini coding execution is available
 through `car execute` with explicit authorization, CAR-controlled verification,
-and rollback. Codex remains an optional read-only diagnostic fallback.
+and rollback. After a verified Gemini failure, an explicitly authorized and
+strictly scoped controlled Codex write may be selected; its public live
+validation remains opt-in.
 
 ## Routing architecture
 
@@ -79,6 +81,9 @@ car execute "Fix parser regression" --file car/parser.py --verify pytest --yes
 
 # Optional fallback is diagnostic and read-only.
 car execute "Fix parser regression" --file car/parser.py --verify pytest --yes --codex-analysis
+
+# Controlled Codex writes require both invocation-local consent and explicit scope.
+car execute "Fix parser regression" --file car/parser.py --verify pytest --yes --allow-codex-write --codex-write-path car/parser.py
 ```
 
 `car analyze` is read-only with respect to the repository, even when Gemini is

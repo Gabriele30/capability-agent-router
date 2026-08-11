@@ -253,8 +253,7 @@ Only verification pass plus post-verification integrity pass plus a successful
 `transaction.finalize()` produces `accepted=True`. Verification failure, timeout,
 an empty plan, an unsafe command, or integrity failure leaves changes unaccepted
 and attempts rollback. If rollback detects a later user edit it preserves that edit
-and reports an uncertain source state. This remains an internal foundation: no CLI
-path applies or finalizes controlled Codex writes.
+and reports an uncertain source state.
 
 ## 5E5-A: internal end-to-end composition
 
@@ -294,8 +293,7 @@ The existing read-only Codex escalation remains intact and is selected only when
 controlled write is not eligible under its separate policy. The modes are mutually
 exclusive per escalation event; read-only analysis never upgrades to a write. The
 existing bounded `CodexHandoff` is passed in memory as context only and cannot widen
-paths, change policy, or alter verification. This remains internal only: no CLI or
-routing behavior has changed.
+paths, change policy, or alter verification.
 
 ## Controlled Python artifact hygiene
 
@@ -304,6 +302,22 @@ Commands selected by Codex may invoke Python while working in the disposable
 workspace; this prevents bytecode cache artifacts from contaminating the reviewed
 filesystem delta. CAR does not ignore or delete cache paths after execution:
 unexpected artifacts remain visible to delta detection and are rejected by validation.
+
+## 5E6: explicit CLI authorization and live validation readiness
+
+`car execute` can supply controlled-write context only after a verified Gemini failure.
+The command requires both `--allow-codex-write` for invocation-local consent and one or
+more explicit repository-relative `--codex-write-path` values. Feature availability
+remains separately controlled by `codex_write.enabled` in local configuration; consent
+and paths are never persisted. Direct Codex routes and read-only escalation semantics
+remain unchanged.
+
+`tests/integration/test_cli_controlled_codex_live.py` is a dedicated opt-in test of the
+public CLI path: real Gemini proposal, test-only deterministic Gemini verification
+failure and rollback, isolated controlled Codex write, delta validation, transactional
+source application, and real final pytest verification. It is gated by
+`CAR_RUN_LIVE_CLI_CONTROLLED_CODEX_TESTS=1` and is not claimed as live validated until
+that command is explicitly run.
 
 ## Next sequence
 

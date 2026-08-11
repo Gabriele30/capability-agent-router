@@ -21,6 +21,7 @@ class ExecutionPresentation:
     codex_analysis: str = "not required"
     workspace: str = "unchanged"
     task: str = "UNRESOLVED"
+    resolved_by: str | None = None
     failure_reason: str | None = None
 
 
@@ -36,6 +37,23 @@ def present_execution_result(result: CodingFlowGatewayResult) -> ExecutionPresen
     application = flow.coding
     pipeline = application.pipeline_result
     route = pipeline.route.value.upper() if pipeline else "unknown"
+    controlled = flow.post_failure.controlled_write if flow.post_failure else None
+    if (
+        result.succeeded
+        and flow.post_failure
+        and flow.post_failure.selected_codex_mode == "controlled_write"
+    ):
+        return ExecutionPresentation(
+            route=route,
+            coding="verified",
+            files_changed=len(getattr(controlled, "modified_paths", [])),
+            verification="passed",
+            rollback="succeeded (Gemini attempt)",
+            codex_analysis="not used (controlled write)",
+            workspace="updated and accepted",
+            task="RESOLVED",
+            resolved_by="Codex controlled write",
+        )
     if result.succeeded:
         changed = (
             len(pipeline.patch_apply.changed_files) if pipeline and pipeline.patch_apply else 0

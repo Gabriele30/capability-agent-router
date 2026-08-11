@@ -38,6 +38,8 @@ class CodingFlowOutcome(StrEnum):
     CODEX_EXECUTION_DISABLED = "codex_execution_disabled"
     CODEX_ANALYSIS_SUCCEEDED = "codex_analysis_succeeded"
     CODEX_ANALYSIS_FAILED = "codex_analysis_failed"
+    CODEX_CONTROLLED_WRITE_SUCCEEDED = "codex_controlled_write_succeeded"
+    CODEX_CONTROLLED_WRITE_FAILED = "codex_controlled_write_failed"
     WORKSPACE_UNCERTAIN = "workspace_uncertain"
 
 
@@ -132,7 +134,7 @@ def execute_coding_flow(
     )
     return CodingFlowResult(
         attempted=coding.attempted,
-        succeeded=False,
+        succeeded=_controlled_write_succeeded(post_failure),
         coding=coding,
         post_failure=post_failure,
         outcome=_outcome(post_failure),
@@ -146,4 +148,13 @@ def _outcome(post_failure: PostFailurePipelineResult) -> CodingFlowOutcome:
         return CodingFlowOutcome.CODEX_EXECUTION_DISABLED
     if post_failure.outcome == PostFailurePipelineOutcome.CODEX_EXECUTION_SUCCEEDED:
         return CodingFlowOutcome.CODEX_ANALYSIS_SUCCEEDED
+    if post_failure.outcome == PostFailurePipelineOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED:
+        return CodingFlowOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED
+    if post_failure.outcome == PostFailurePipelineOutcome.CODEX_CONTROLLED_WRITE_FAILED:
+        return CodingFlowOutcome.CODEX_CONTROLLED_WRITE_FAILED
     return CodingFlowOutcome.CODEX_ANALYSIS_FAILED
+
+
+def _controlled_write_succeeded(post_failure: PostFailurePipelineResult) -> bool:
+    """Only accepted controlled source changes can resolve the coding task."""
+    return post_failure.selected_codex_mode == "controlled_write" and post_failure.succeeded

@@ -438,6 +438,8 @@ def _print_coding_flow_result(result) -> None:
     console.print("\n[bold]CAR Execution Result[/]")
     console.print(f"Route: {presentation.route}")
     console.print(f"Coding: {presentation.coding}")
+    if presentation.resolved_by:
+        console.print(f"Resolved by: {presentation.resolved_by}")
     if presentation.temporary_changes:
         console.print(f"Files changed temporarily: {presentation.files_changed}")
     elif presentation.files_changed:
@@ -571,7 +573,7 @@ def execute(
         ),
         files=selected,
     )
-    gateway = CodingFlowGateway(
+    gateway = _build_coding_flow_gateway(
         _build_coding_provider(config),
         _build_codex_runtime() if codex_analysis else _UnavailableCodexRuntime(),
     )
@@ -596,6 +598,11 @@ def execute(
     _print_coding_flow_result(result)
     if not result.succeeded:
         raise typer.Exit(code=1)
+
+
+def _build_coding_flow_gateway(coding_provider, codex_runtime) -> CodingFlowGateway:
+    """Compose the production gateway; tests may replace this narrow construction seam."""
+    return CodingFlowGateway(coding_provider, codex_runtime)
 
 
 class _UnavailableCodexRuntime:

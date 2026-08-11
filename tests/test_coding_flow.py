@@ -10,6 +10,9 @@ import car.application.coding_flow as coding_flow
 from car.application.codex import CodexExecutionPolicy
 from car.application.coding_execution import CodingPipelineExecutionPolicy
 from car.application.coding_flow import CodingFlowOutcome, execute_coding_flow
+from car.application.execution_gateway import CodingFlowGatewayResult
+from car.application.post_failure import PostFailurePipelineOutcome, PostFailurePipelineResult
+from car.cli.presentation import present_execution_result
 from car.codex.models import (
     CodexExecutionResult,
     CodexRuntimeFailureKind,
@@ -26,6 +29,7 @@ from car.coding.models import (
     ProposedFileChange,
 )
 from car.coding.verification import CodingVerificationCoordinator
+from car.escalation.models import EscalationDecision, EscalationReason
 from car.execution.models import CommandResult, CommandSpec
 from car.patching.apply import SafePatchApplier
 from car.providers.models import (
@@ -327,6 +331,45 @@ def test_verified_post_failure_receives_controlled_write_context_at_application_
     assert received["codex_write_authorization"] == (authorization or CodexWriteAuthorization())
     assert received["codex_write_paths"] == paths
     assert runtime.execute_calls == 1
+
+
+def test_accepted_controlled_write_resolves_the_coding_flow(monkeypatch, tmp_path: Path):
+    target = tmp_path / "a.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+
+    def accepted_controlled_write(**kwargs):
+        return PostFailurePipelineResult(
+            escalation=EscalationDecision(
+                should_escalate=True,
+                target=Route.CODEX,
+                reason=EscalationReason.VERIFICATION_FAILED,
+            ),
+            controlled_write=object(),
+            selected_codex_mode="controlled_write",
+            attempted_codex=True,
+            succeeded=True,
+            outcome=PostFailurePipelineOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED,
+        )
+
+    monkeypatch.setattr(coding_flow, "process_verified_coding_outcome", accepted_controlled_write)
+    result = _flow(
+        tmp_path,
+        Route.GEMINI_TO_CODEX,
+        FakeProvider(_proposal("value = 1\n")),
+        FakeCodexRuntime(tmp_path),
+        verification_coordinator=CodingVerificationCoordinator(
+            FakeVerificationEngine(VerificationStatus.FAILED)
+        ),
+    )
+
+    assert result.succeeded
+    assert result.outcome == CodingFlowOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED
+    presentation = present_execution_result(
+        CodingFlowGatewayResult(authorized=True, attempted=True, succeeded=True, flow_result=result)
+    )
+    assert presentation.resolved_by == "Codex controlled write"
+    assert presentation.verification == "passed"
+    assert presentation.workspace == "updated and accepted"
 
 
 def test_gemini_failure_and_verified_failure_do_not_escalate(tmp_path: Path):
