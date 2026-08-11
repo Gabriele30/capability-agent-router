@@ -181,5 +181,7 @@ not invoke a live Codex execution.
 - Current: 0.6 — experimental controlled writes with CLI wiring,
   isolated projection, delta validation, transactional source application, and
   verification-gated finalization.
-- Later: repository memory, deeper retrieval, VS Code integration, telemetry,
-  adaptive routing, and verifiability-aware routing.
+- Current 0.7 development: in-memory execution telemetry and future execution
+  economics measurement. It does not yet calculate costs or alter routing.
+- Later: repository memory, deeper retrieval, VS Code integration, adaptive routing,
+  and verifiability-aware routing.
