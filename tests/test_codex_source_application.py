@@ -13,7 +13,9 @@ from car.codex_write.models import (
     CodexWriteFailureKind,
     CodexWritePolicy,
 )
+from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.codex_write.projection import BaselineProjectionService
+from car.codex_write.runtime_models import ControlledCodexWriteResult
 from car.codex_write.verification import CodexSourceVerificationCoordinator
 from car.codex_write.workspace import IsolatedWorkspaceManager
 from car.execution.models import CommandResult, CommandSpec
@@ -43,6 +45,26 @@ class _VerificationEngine:
         if self.hook is not None:
             self.hook()
         return self.result
+
+
+class _SyntheticRuntime:
+    def __init__(self, changes: dict[str, bytes]) -> None:
+        self.changes = changes
+        self.calls = 0
+
+    def execute(self, request, authorization):
+        self.calls += 1
+        for path, content in self.changes.items():
+            target = request.workspace.workspace.path / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        return ControlledCodexWriteResult(
+            attempted=True,
+            process_succeeded=True,
+            final_message="synthetic isolated write",
+            baseline_digest=request.workspace.baseline_digest,
+            baseline_head_oid=request.workspace.baseline_head_oid,
+        )
 
 
 def _command(root: Path) -> CommandSpec:
@@ -94,6 +116,25 @@ def _prepared(source: Path, path: str, content: bytes, policy: CodexWritePolicy 
         policy,
         validated.validated_change_set,
         detector,
+    )
+
+
+def _pipeline(root: Path, runtime, verification: VerificationStatus):
+    manager = IsolatedWorkspaceManager()
+    baseline = SourceBaselineService()
+    projection = BaselineProjectionService(baseline_service=baseline, workspace_manager=manager)
+    detector = CodexWorkspaceDeltaDetector(manager)
+    verifier = CodexSourceVerificationCoordinator(
+        _VerificationEngine(_verification(root, verification))
+    )
+    return ControlledCodexWritePipeline(
+        workspace_manager=manager,
+        baseline_service=baseline,
+        projection_service=projection,
+        runtime=runtime,
+        detector=detector,
+        application_service=CodexSourceApplicationService(detector, baseline_service=baseline),
+        verification_coordinator=verifier,
     )
 
 
@@ -408,3 +449,79 @@ def test_b2_post_verification_mutation_is_not_accepted(git_repository: Path):
         assert (git_repository / "README.md").read_bytes() == b"user edit\n"
     finally:
         assert projection.cleanup(projected).removed
+
+
+def test_pipeline_composes_real_workspace_apply_and_finalization(git_repository: Path):
+    runtime = _SyntheticRuntime({"README.md": b"Codex D\n"})
+    pipeline = _pipeline(git_repository, runtime, VerificationStatus.PASSED)
+    policy = CodexWritePolicy(enabled=True)
+
+    result = pipeline.execute(
+        git_repository,
+        "update readme",
+        ("README.md",),
+        VerificationPlan(commands=[_command(git_repository)]),
+        policy,
+        CodexWriteAuthorization(authorized=True),
+    )
+
+    assert result.accepted and result.source_state.value == "updated_and_accepted"
+    assert result.workspace_cleanup_succeeded and runtime.calls == 1
+    assert (git_repository / "README.md").read_bytes() == b"Codex D\n"
+
+
+def test_pipeline_failure_paths_do_not_accept_or_leave_workspace(git_repository: Path):
+    original = (git_repository / "README.md").read_bytes()
+    runtime = _SyntheticRuntime({"README.md": b"Codex D\n"})
+    pipeline = _pipeline(git_repository, runtime, VerificationStatus.FAILED)
+    policy = CodexWritePolicy(enabled=True)
+    result = pipeline.execute(
+        git_repository,
+        "update readme",
+        ("README.md",),
+        VerificationPlan(commands=[_command(git_repository)]),
+        policy,
+        CodexWriteAuthorization(authorized=True),
+    )
+    assert not result.accepted and result.source_state.value == "restored"
+    assert (
+        result.workspace_cleanup_succeeded
+        and (git_repository / "README.md").read_bytes() == original
+    )
+
+    no_change_runtime = _SyntheticRuntime({})
+    no_change = _pipeline(git_repository, no_change_runtime, VerificationStatus.PASSED).execute(
+        git_repository,
+        "no change",
+        ("README.md",),
+        VerificationPlan(commands=[_command(git_repository)]),
+        policy,
+        CodexWriteAuthorization(authorized=True),
+    )
+    assert no_change.failure_kind == CodexWriteFailureKind.NO_CHANGES
+    assert no_change.workspace_cleanup_succeeded
+
+
+def test_pipeline_disabled_or_unauthorized_has_zero_runtime_calls(git_repository: Path):
+    runtime = _SyntheticRuntime({"README.md": b"Codex D\n"})
+    pipeline = _pipeline(git_repository, runtime, VerificationStatus.PASSED)
+    plan = VerificationPlan(commands=[_command(git_repository)])
+    disabled = pipeline.execute(
+        git_repository,
+        "update",
+        ("README.md",),
+        plan,
+        CodexWritePolicy(),
+        CodexWriteAuthorization(authorized=True),
+    )
+    unauthorized = pipeline.execute(
+        git_repository,
+        "update",
+        ("README.md",),
+        plan,
+        CodexWritePolicy(enabled=True),
+        CodexWriteAuthorization(),
+    )
+    assert disabled.failure_kind == CodexWriteFailureKind.DISABLED
+    assert unauthorized.failure_kind == CodexWriteFailureKind.NOT_AUTHORIZED
+    assert runtime.calls == 0

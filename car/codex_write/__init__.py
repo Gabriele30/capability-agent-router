@@ -24,10 +24,13 @@ from .models import (
     CodexWriteAuthorization,
     CodexWriteFailureKind,
     CodexWritePolicy,
+    ControlledCodexWritePipelineResult,
+    ControlledCodexWritePipelineStage,
     ValidatedCodexChangeSet,
     baseline_matches,
     validate_change_set,
 )
+from .pipeline import ControlledCodexWritePipeline
 from .projection import (
     BaselineProjectionService,
     ProjectedIsolatedWorkspace,
@@ -68,6 +71,9 @@ __all__ = [
     "CodexSourceTransactionState",
     "CodexSourceVerificationCoordinator",
     "CodexSourceVerificationResult",
+    "ControlledCodexWritePipeline",
+    "ControlledCodexWritePipelineResult",
+    "ControlledCodexWritePipelineStage",
     "CodexFileDelta",
     "CodexFileIdentity",
     "CodexWriteAuthorization",

@@ -256,6 +256,32 @@ and attempts rollback. If rollback detects a later user edit it preserves that e
 and reports an uncertain source state. This remains an internal foundation: no CLI
 path applies or finalizes controlled Codex writes.
 
+## 5E5-A: internal end-to-end composition
+
+`ControlledCodexWritePipeline` composes the existing internal boundaries only:
+
+```text
+authorization -> baseline -> isolated projection -> controlled Codex write
+-> delta validation -> transactional source apply -> CAR verification
+-> finalize or rollback -> isolated workspace cleanup
+```
+
+It is **internal only** and is not wired to CLI, routing, Gemini escalation, or
+any user-visible write behavior. The pipeline owns only sequencing and owned
+workspace cleanup; baseline capture, projection, Windows ACL handling, runtime
+sandboxing, delta validation, application, rollback, verification, and finalization
+remain delegated to their existing components.
+
+Policy and runtime authorization are checked before workspace creation. A non-empty
+verification plan is likewise required before isolated Codex execution. Codex process
+success remains insufficient: no delta, rejected delta, application failure,
+verification failure, or integrity uncertainty is unaccepted. On every path after
+projection, cleanup of the CAR-owned isolated worktree is attempted and reported.
+Cleanup failure is visible even if a source transaction was already accepted.
+
+Only the B2 verification/finalization result can make pipeline `accepted=True`.
+The controlled Codex runtime's own `changes_accepted` remains false.
+
 ## Next sequence
 
 Current status: 5E3-B is locally live-verified; 5E4-A validates the untrusted

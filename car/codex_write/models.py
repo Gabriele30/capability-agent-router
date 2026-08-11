@@ -230,6 +230,18 @@ class CodexSourceState(StrEnum):
     UNCERTAIN = "uncertain"
 
 
+class ControlledCodexWritePipelineStage(StrEnum):
+    NOT_STARTED = "not_started"
+    BASELINE_CAPTURED = "baseline_captured"
+    PROJECTED = "projected"
+    CODEX_EXECUTED = "codex_executed"
+    DELTA_VALIDATED = "delta_validated"
+    SOURCE_APPLIED = "source_applied"
+    FINALIZED = "finalized"
+    ROLLED_BACK = "rolled_back"
+    FAILED = "failed"
+
+
 class CodexSourceApplicationResult(_StrictModel):
     attempted: bool
     applied: bool
@@ -279,6 +291,31 @@ class CodexSourceVerificationResult(_StrictModel):
         ):
             raise ValueError("accepted source changes require finalized verified integrity")
         return self
+
+
+class ControlledCodexWritePipelineResult(_StrictModel):
+    attempted: bool
+    accepted: bool = False
+    source_state: CodexSourceState
+    terminal_stage: ControlledCodexWritePipelineStage
+    failure_kind: CodexWriteFailureKind | None = None
+    baseline_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    workspace_created: bool = False
+    workspace_cleanup_attempted: bool = False
+    workspace_cleanup_succeeded: bool | None = None
+    codex_result: object | None = None
+    delta_result: object | None = None
+    application_result: CodexSourceApplicationResult | None = None
+    verification_result: CodexSourceVerificationResult | None = None
+    changed_paths: list[str] = Field(default_factory=list)
+    created_paths: list[str] = Field(default_factory=list)
+    modified_paths: list[str] = Field(default_factory=list)
+    message: str
+
+    @field_validator("changed_paths", "created_paths", "modified_paths")
+    @classmethod
+    def pipeline_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
+        return [normalize_repository_relative_path(value) for value in values]
 
 
 def validate_change_set(
