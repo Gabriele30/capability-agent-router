@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -269,8 +270,27 @@ def test_child_environment_uses_one_case_insensitive_entry_per_logical_name():
             "GEMINI_API_KEY": "secret",
         }
     )
-    assert environment == {"PATH": "last-path", "APPDATA": "application-data"}
+    assert environment == {
+        "PATH": "last-path",
+        "APPDATA": "application-data",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
     assert len({name.casefold() for name in environment}) == len(environment)
+
+
+def test_controlled_environment_prevents_python_bytecode_artifacts(tmp_path: Path):
+    (tmp_path / "calculator.py").write_text("value = 1\n", encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, "-c", "import calculator; assert calculator.value == 1"],
+        cwd=tmp_path,
+        env=controlled_child_environment({"PYTHONDONTWRITEBYTECODE": "0"}),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0
+    assert not (tmp_path / "__pycache__").exists()
+    assert not list(tmp_path.rglob("*.pyc"))
 
 
 def test_timeout_nonzero_empty_output_and_missing_cli_are_structured(git_repository: Path):

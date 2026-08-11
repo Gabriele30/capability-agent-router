@@ -278,11 +278,14 @@ def controlled_child_environment(parent: dict[str, str] | None = None) -> dict[s
     """Positive allowlist for the child; credentials and arbitrary parent values are omitted."""
     source = os.environ if parent is None else parent
     by_casefold = {key.casefold(): value for key, value in source.items()}
-    return {
+    environment = {
         key: value
         for key in _ENVIRONMENT_KEYS
         if (value := by_casefold.get(key.casefold())) is not None
     }
+    # CAR-owned hygiene: agent-invoked Python must not contaminate the reviewed delta.
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    return environment
 
 
 def _stdin(request: ControlledCodexWriteRequest) -> str:

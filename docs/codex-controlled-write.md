@@ -297,6 +297,14 @@ existing bounded `CodexHandoff` is passed in memory as context only and cannot w
 paths, change policy, or alter verification. This remains internal only: no CLI or
 routing behavior has changed.
 
+## Controlled Python artifact hygiene
+
+The controlled Codex child environment sets `PYTHONDONTWRITEBYTECODE=1` itself.
+Commands selected by Codex may invoke Python while working in the disposable
+workspace; this prevents bytecode cache artifacts from contaminating the reviewed
+filesystem delta. CAR does not ignore or delete cache paths after execution:
+unexpected artifacts remain visible to delta detection and are rejected by validation.
+
 ## Next sequence
 
 Current status: 5E3-B is locally live-verified; 5E4-A validates the untrusted
