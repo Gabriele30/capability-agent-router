@@ -11,6 +11,8 @@ from car.application.escalation import (
     execute_codex_escalation,
 )
 from car.codex.runtime import CodexRuntime
+from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
+from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.coding.models import CodingAttemptResult, CodingTaskContext
 from car.coding.verification import CodingVerificationResult
 from car.escalation.handoff import build_codex_handoff, decide_escalation
@@ -28,12 +30,16 @@ class PostFailurePipelineOutcome(StrEnum):
     CODEX_EXECUTION_DISABLED = "codex_execution_disabled"
     CODEX_EXECUTION_SUCCEEDED = "codex_execution_succeeded"
     CODEX_EXECUTION_FAILED = "codex_execution_failed"
+    CODEX_CONTROLLED_WRITE_SUCCEEDED = "codex_controlled_write_succeeded"
+    CODEX_CONTROLLED_WRITE_FAILED = "codex_controlled_write_failed"
 
 
 class PostFailurePipelineResult(BaseModel):
     escalation: EscalationDecision
     handoff: CodexHandoff | None = None
     codex_execution: CodexEscalationExecutionResult | None = None
+    controlled_write: object | None = None
+    selected_codex_mode: str = "none"
     attempted_codex: bool
     succeeded: bool
     outcome: PostFailurePipelineOutcome
@@ -53,6 +59,10 @@ def process_verified_coding_outcome(
     codex_execution_policy: CodexExecutionPolicy | None = None,
     handoff_policy: HandoffPolicy | None = None,
     verification_plan: VerificationPlan | None = None,
+    codex_write_policy: CodexWritePolicy | None = None,
+    codex_write_authorization: CodexWriteAuthorization | None = None,
+    codex_write_paths: tuple[str, ...] = (),
+    controlled_write_pipeline: ControlledCodexWritePipeline | None = None,
 ) -> PostFailurePipelineResult:
     """Use existing evidence, handoff, decision, and coordinator boundaries once."""
     handoff = build_codex_handoff(
@@ -87,6 +97,39 @@ def process_verified_coding_outcome(
                 else PostFailurePipelineOutcome.ESCALATION_NOT_ALLOWED
             ),
         )
+    write_policy = codex_write_policy or CodexWritePolicy()
+    write_authorization = codex_write_authorization or CodexWriteAuthorization()
+    write_eligible = (
+        write_policy.enabled
+        and write_authorization.authorized
+        and bool(codex_write_paths)
+        and verification_plan is not None
+        and bool(verification_plan.commands)
+    )
+    if write_eligible:
+        pipeline = controlled_write_pipeline or ControlledCodexWritePipeline()
+        controlled = pipeline.execute(
+            repository_state.root,
+            task,
+            codex_write_paths,
+            verification_plan,
+            write_policy,
+            write_authorization,
+            handoff,
+        )
+        return PostFailurePipelineResult(
+            escalation=escalation,
+            handoff=handoff,
+            controlled_write=controlled,
+            attempted_codex=controlled.attempted,
+            succeeded=controlled.accepted,
+            selected_codex_mode="controlled_write",
+            outcome=(
+                PostFailurePipelineOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED
+                if controlled.accepted
+                else PostFailurePipelineOutcome.CODEX_CONTROLLED_WRITE_FAILED
+            ),
+        )
     codex_execution = execute_codex_escalation(
         repository_state.root,
         escalation,
@@ -100,6 +143,7 @@ def process_verified_coding_outcome(
         codex_execution=codex_execution,
         attempted_codex=codex_execution.attempted,
         succeeded=codex_execution.succeeded,
+        selected_codex_mode="read_only",
         outcome=_outcome(codex_execution),
     )
 

@@ -14,6 +14,13 @@ from car.codex.models import (
     CodexRuntimeHealth,
     CodexRuntimeHealthStatus,
 )
+from car.codex_write.models import (
+    CodexSourceState,
+    CodexWriteAuthorization,
+    CodexWritePolicy,
+    ControlledCodexWritePipelineResult,
+    ControlledCodexWritePipelineStage,
+)
 from car.coding.models import (
     CodingAttemptResult,
     CodingFileContext,
@@ -37,6 +44,7 @@ from car.router.models import (
     ScopeSize,
     TaskCategory,
 )
+from car.verification.models import VerificationPlan
 
 
 class FakeCodexRuntime:
@@ -57,6 +65,30 @@ class FakeCodexRuntime:
         self.execute_calls += 1
         self.last_request = request
         return self.execution
+
+
+class FakeControlledPipeline:
+    def __init__(self, accepted=True) -> None:
+        self.accepted = accepted
+        self.calls = []
+
+    def execute(self, repository, task, paths, plan, policy, authorization, handoff):
+        self.calls.append((paths, handoff))
+        return ControlledCodexWritePipelineResult(
+            attempted=True,
+            accepted=self.accepted,
+            source_state=(
+                CodexSourceState.UPDATED_AND_ACCEPTED
+                if self.accepted
+                else CodexSourceState.RESTORED
+            ),
+            terminal_stage=(
+                ControlledCodexWritePipelineStage.FINALIZED
+                if self.accepted
+                else ControlledCodexWritePipelineStage.ROLLED_BACK
+            ),
+            message="synthetic controlled result",
+        )
 
 
 def _inputs(root: Path, route: Route = Route.GEMINI_TO_CODEX, *, passed=False, rollback=True):
@@ -175,6 +207,40 @@ def test_gemini_to_codex_disabled_success_and_rollback_failure(tmp_path: Path):
     )
     assert uncertain.outcome == PostFailurePipelineOutcome.WORKSPACE_UNCERTAIN
     assert uncertain_runtime.health_calls == uncertain_runtime.execute_calls == 0
+
+
+def test_explicit_write_authorization_selects_only_controlled_mode(tmp_path: Path):
+    controlled = FakeControlledPipeline()
+    read_only = FakeCodexRuntime()
+    result = process_verified_coding_outcome(
+        **_inputs(tmp_path),
+        codex_runtime=read_only,
+        codex_execution_policy=CodexExecutionPolicy(enabled=True),
+        codex_write_policy=CodexWritePolicy(enabled=True),
+        codex_write_authorization=CodexWriteAuthorization(authorized=True),
+        codex_write_paths=("car/parser.py",),
+        verification_plan=VerificationPlan(),
+        controlled_write_pipeline=controlled,
+    )
+    assert not controlled.calls and read_only.execute_calls == 1
+
+    plan = VerificationPlan(commands=[])
+    # A non-empty plan is required; use the existing handoff plan shape only for scope gating.
+    plan.commands.append(
+        type("Command", (), {"args": ["pytest"], "cwd": str(tmp_path), "timeout_seconds": 1})()
+    )
+    result = process_verified_coding_outcome(
+        **_inputs(tmp_path),
+        codex_runtime=read_only,
+        codex_execution_policy=CodexExecutionPolicy(enabled=True),
+        codex_write_policy=CodexWritePolicy(enabled=True),
+        codex_write_authorization=CodexWriteAuthorization(authorized=True),
+        codex_write_paths=("car/parser.py",),
+        verification_plan=plan,
+        controlled_write_pipeline=controlled,
+    )
+    assert result.succeeded and result.selected_codex_mode == "controlled_write"
+    assert controlled.calls == [(("car/parser.py",), result.handoff)]
 
 
 def test_runtime_readiness_and_failure_evidence_are_preserved(tmp_path: Path):

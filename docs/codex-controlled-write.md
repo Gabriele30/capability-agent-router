@@ -282,6 +282,21 @@ Cleanup failure is visible even if a source transaction was already accepted.
 Only the B2 verification/finalization result can make pipeline `accepted=True`.
 The controlled Codex runtime's own `changes_accepted` remains false.
 
+## 5E5-B: internal verified Gemini-failure escalation
+
+The existing verified-failure post-processing boundary can now select one Codex mode
+for an eligible `GEMINI_TO_CODEX` failure. A controlled write is selected only after
+Gemini verification failed with a completed rollback, and only with an explicitly
+enabled write policy, runtime write authorization, non-empty explicit path scope,
+and non-empty verification plan. Routing to Codex is not write consent.
+
+The existing read-only Codex escalation remains intact and is selected only when
+controlled write is not eligible under its separate policy. The modes are mutually
+exclusive per escalation event; read-only analysis never upgrades to a write. The
+existing bounded `CodexHandoff` is passed in memory as context only and cannot widen
+paths, change policy, or alter verification. This remains internal only: no CLI or
+routing behavior has changed.
+
 ## Next sequence
 
 Current status: 5E3-B is locally live-verified; 5E4-A validates the untrusted

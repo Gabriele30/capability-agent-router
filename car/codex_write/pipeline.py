@@ -58,6 +58,7 @@ class ControlledCodexWritePipeline:
         verification_plan: VerificationPlan,
         policy: CodexWritePolicy,
         authorization: CodexWriteAuthorization,
+        handoff=None,
     ) -> ControlledCodexWritePipelineResult:
         if not policy.enabled:
             return _failure(CodexWriteFailureKind.DISABLED)
@@ -92,7 +93,10 @@ class ControlledCodexWritePipeline:
             )
             codex = runtime.execute(
                 ControlledCodexWriteRequest(
-                    workspace=workspace, task=task, authorized_paths=authorized_paths
+                    workspace=workspace,
+                    task=task,
+                    authorized_paths=authorized_paths,
+                    handoff=handoff,
                 ),
                 authorization,
             )
