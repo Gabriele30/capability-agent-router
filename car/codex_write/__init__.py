@@ -7,15 +7,19 @@ from .baseline import (
     SourceBaselineService,
     parse_porcelain_v2,
 )
+from .delta import CodexWorkspaceDeltaDetector, CodexWorkspaceDeltaValidator
 from .models import (
     CodexChangeSet,
     CodexChangeValidationResult,
     CodexFileDelta,
     CodexFileIdentity,
     CodexWorkspaceBaseline,
+    CodexWorkspaceDelta,
+    CodexWorkspaceDeltaValidationResult,
     CodexWriteAuthorization,
     CodexWriteFailureKind,
     CodexWritePolicy,
+    ValidatedCodexChangeSet,
     baseline_matches,
     validate_change_set,
 )
@@ -57,6 +61,10 @@ __all__ = [
     "CodexWriteFailureKind",
     "CodexWritePolicy",
     "CodexWorkspaceBaseline",
+    "CodexWorkspaceDelta",
+    "CodexWorkspaceDeltaDetector",
+    "CodexWorkspaceDeltaValidationResult",
+    "CodexWorkspaceDeltaValidator",
     "baseline_matches",
     "validate_change_set",
     "IsolatedCodexWorkspace",
@@ -68,5 +76,6 @@ __all__ = [
     "SubprocessControlledCodexRunner",
     "WorkspaceCleanupResult",
     "WorkspaceCreationResult",
+    "ValidatedCodexChangeSet",
     "parse_porcelain_v2",
 ]

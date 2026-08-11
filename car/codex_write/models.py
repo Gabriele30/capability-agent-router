@@ -42,6 +42,13 @@ class CodexWriteFailureKind(StrEnum):
     GIT_TIMEOUT = "git_timeout"
     WORKSPACE_SETUP_FAILED = "workspace_setup_failed"
     WORKSPACE_CLEANUP_FAILED = "workspace_cleanup_failed"
+    UNAUTHORIZED_CHANGE = "unauthorized_change"
+    UNSUPPORTED_CHANGE = "unsupported_change"
+    DELETE_NOT_ALLOWED = "delete_not_allowed"
+    RENAME_NOT_ALLOWED = "rename_not_allowed"
+    SYMLINK_NOT_ALLOWED = "symlink_not_allowed"
+    CHANGE_LIMIT_EXCEEDED = "change_limit_exceeded"
+    WORKSPACE_INTEGRITY_FAILED = "workspace_integrity_failed"
     MALFORMED_GIT_STATUS = "malformed_git_status"
     TOTAL_SIZE_EXCEEDED = "total_size_exceeded"
     UNSUPPORTED_REPOSITORY_STATE = "unsupported_repository_state"
@@ -153,6 +160,49 @@ class CodexChangeValidationResult(_StrictModel):
     failure_kind: CodexWriteFailureKind | None = None
     path: str | None = None
     message: str
+
+
+class CodexWorkspaceDelta(_StrictModel):
+    """Untrusted, content-free filesystem delta observed in a projected workspace."""
+
+    baseline_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    baseline_head_oid: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    deltas: list[CodexFileDelta] = Field(default_factory=list)
+    changed_paths: list[str] = Field(default_factory=list)
+    operation_counts: dict[CodexChangeOperation, int] = Field(default_factory=dict)
+
+    @field_validator("changed_paths")
+    @classmethod
+    def paths_are_repository_relative(cls, values: list[str]) -> list[str]:
+        return [normalize_repository_relative_path(value) for value in values]
+
+
+class ValidatedCodexChangeSet(_StrictModel):
+    """Eligible-for-future-application change set; it never authorizes source writes."""
+
+    change_set: CodexChangeSet
+    baseline_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revalidated: bool = True
+    workspace_integrity_valid: bool = True
+
+
+class CodexWorkspaceDeltaValidationResult(_StrictModel):
+    """Structured result for detection and validation of isolated Codex filesystem changes."""
+
+    detected: bool
+    valid: bool
+    delta: CodexWorkspaceDelta | None = None
+    validated_change_set: ValidatedCodexChangeSet | None = None
+    failure_kind: CodexWriteFailureKind | None = None
+    rejected_paths: list[str] = Field(default_factory=list)
+    source_revalidated: bool = False
+    workspace_integrity_valid: bool = False
+    message: str
+
+    @field_validator("rejected_paths")
+    @classmethod
+    def rejected_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
+        return [normalize_repository_relative_path(value) for value in values]
 
 
 def validate_change_set(

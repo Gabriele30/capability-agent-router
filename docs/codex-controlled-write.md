@@ -174,7 +174,7 @@ roots, and future delta validation. CAR does **not** claim host-wide read
 isolation: read confinement depends on Codex and OS sandbox behavior and is not a
 CAR guarantee in 5E3-A.
 
-## 5E3-B: live validation implemented, pending explicit local execution
+## 5E3-B: live validation implemented
 
 An integration test now validates the complete B1 → B2 → controlled-write runtime
 path against a synthetic temporary Git repository. It is independently gated by
@@ -189,11 +189,29 @@ It checks a small authorized change only in the projected workspace, leaves sour
 files and Git state unchanged, requires the isolated change to remain unstaged and
 detached, and then removes the owned worktree.
 
-This is not live verified until a user explicitly runs it successfully. It does not
-accept a Codex delta, apply anything to the source repository, or establish
-host-wide read isolation.
+The canonical validation has been run successfully against a synthetic repository.
+It does not accept a Codex delta, apply anything to the source repository, or
+establish host-wide read isolation.
+
+## 5E4-A: isolated delta detection and validation
+
+The controlled-write pipeline is now B1 source baseline capture, B2 projection,
+B3 Codex isolated write, then isolated workspace delta detection and validation.
+Codex filesystem writes remain untrusted: an exit-zero Codex process does not mean
+that a change is accepted. CAR independently compares the isolated filesystem with
+the exact B1 state projected into that workspace, checks linked-worktree integrity,
+revalidates the source baseline for concurrent user changes, and validates paths,
+authorization, supported operations, symlinks, binary data, and configured bounds.
+
+The result may be a `ValidatedCodexChangeSet`, but 5E4-A never applies it. CAR does
+not copy files to the source repository, stage or commit changes, run source
+verification, or set `changes_accepted=True` in this stage.
 
 ## Next sequence
+
+Current status: 5E3-B is locally live-verified and 5E4-A validates only the
+untrusted isolated delta. Source application remains a later milestone; the
+historical roadmap entries below do not authorize source writes.
 
 1. **5E3-B — Opt-in Live Codex Isolated Write Validation.** Implemented; pending
    explicit local execution with `CAR_RUN_LIVE_CODEX_WRITE_TESTS=1`.
