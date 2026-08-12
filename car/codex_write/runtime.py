@@ -157,6 +157,7 @@ class ControlledCodexWriteRuntime:
                 workspace_path=workspace.workspace.path,
                 is_windows=self._is_windows,
                 model=request.model,
+                reasoning_effort=request.reasoning_effort,
             ),
             cwd=workspace.workspace.path,
             stdin=_stdin(request),
@@ -268,12 +269,19 @@ class ControlledCodexWriteRuntime:
 
 
 def _execution_argv(
-    executable: str, *, workspace_path: Path, is_windows: bool, model: str | None = None
+    executable: str,
+    *,
+    workspace_path: Path,
+    is_windows: bool,
+    model: str | None = None,
+    reasoning_effort=None,
 ) -> list[str]:
     """Build the fixed command from the CAR-owned projected workspace only."""
     argv = [executable]
     if is_windows:
         argv.extend(["-c", 'windows.sandbox="unelevated"'])
+    if reasoning_effort is not None:
+        argv.extend(["-c", f'model_reasoning_effort="{reasoning_effort.value}"'])
     if model:
         argv.extend(["-m", model])
     argv.extend(

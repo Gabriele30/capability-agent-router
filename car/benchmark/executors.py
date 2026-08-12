@@ -13,6 +13,7 @@ from car.benchmark.models import BenchmarkStrategy
 from car.benchmark.results import BenchmarkExecutionOutcome, BenchmarkInvariantError
 from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.codex_write.pipeline import ControlledCodexWritePipeline
+from car.codex_write.runtime_models import CodexReasoningEffort
 from car.coding.base import CodingProvider
 from car.escalation.models import HandoffPolicy
 from car.telemetry import (
@@ -34,6 +35,7 @@ class BenchmarkExecutionDependencies:
         default_factory=lambda: CodexWritePolicy(enabled=True)
     )
     codex_model: str | None = None
+    codex_reasoning_effort: CodexReasoningEffort | None = None
 
 
 class CARBenchmarkExecutor:
@@ -122,6 +124,7 @@ class CARBenchmarkExecutor:
             self._dependencies.codex_write_policy,
             CodexWriteAuthorization(authorized=True),
             codex_model=self._dependencies.codex_model,
+            codex_reasoning_effort=self._dependencies.codex_reasoning_effort,
         )
         verification = _codex_verification(result.verification_result)
         collector.finish_attempt(
@@ -169,6 +172,7 @@ class CARBenchmarkExecutor:
             codex_write_authorization=CodexWriteAuthorization(authorized=True),
             codex_write_paths=context.case.authorized_paths,
             codex_model=self._dependencies.codex_model,
+            codex_reasoning_effort=self._dependencies.codex_reasoning_effort,
             controlled_write_pipeline=self._dependencies.controlled_pipeline,
         )
         if result.telemetry is None:

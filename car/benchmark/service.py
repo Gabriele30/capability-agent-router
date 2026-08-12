@@ -21,6 +21,7 @@ def run_manifest_benchmark(
     *,
     gemini_model: str | None = None,
     codex_model: str | None = None,
+    codex_reasoning_effort: str | None = None,
 ) -> BenchmarkReport:
     if not strategies:
         raise ValueError("at least one benchmark strategy is required")
@@ -35,6 +36,7 @@ def run_manifest_benchmark(
         cost_basis=CostBasis.PUBLIC_API_LIST_PRICE.value,
         gemini_model=gemini_model,
         codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
     )
     results = tuple(
         item

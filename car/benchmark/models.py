@@ -62,4 +62,5 @@ class BenchmarkRunMetadata(BaseModel):
     cost_basis: str
     gemini_model: str | None = None
     codex_model: str | None = None
+    codex_reasoning_effort: str | None = None
     safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS

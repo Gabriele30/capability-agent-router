@@ -105,10 +105,12 @@ class _ControlledRuntime:
         self.auxiliary_path = auxiliary_path
         self.calls = 0
         self.models: list[str | None] = []
+        self.efforts: list[object] = []
 
     def execute(self, request, authorization):
         self.calls += 1
         self.models.append(request.model)
+        self.efforts.append(request.reasoning_effort)
         (request.workspace.workspace.path / "target.py").write_text(
             self.replacement, encoding="utf-8"
         )
@@ -572,6 +574,43 @@ def test_pinned_codex_model_is_shared_by_codex_only_and_car_escalation(tmp_path:
         "gpt-5.6-sol",
         "gpt-5.6-sol",
     ]
+
+
+def test_terra_effort_is_shared_by_codex_only_direct_and_car_fallback(tmp_path: Path):
+    from car.codex_write.runtime_models import CodexReasoningEffort
+
+    fixture = _fixture(tmp_path)
+    runtime = _ControlledRuntime()
+    executor = CARBenchmarkExecutor(
+        BenchmarkExecutionDependencies(
+            coding_provider=_Provider("value = ("),
+            codex_runtime=_ReadOnlyRuntime(),
+            controlled_pipeline=ControlledCodexWritePipeline(runtime=runtime),
+            codex_write_policy=CodexWritePolicy(enabled=True),
+            codex_model="gpt-5.6-terra",
+            codex_reasoning_effort=CodexReasoningEffort.MEDIUM,
+        )
+    )
+    results = BenchmarkRunner(executor).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.CODEX_ONLY, BenchmarkStrategy.CAR)
+    )
+    spaces = BenchmarkWorkspaceSet(fixture)
+    try:
+        direct = executor.execute(
+            _case(fixture, task="Fix authentication bypass"),
+            spaces.workspaces[BenchmarkStrategy.CAR],
+            BenchmarkStrategy.CAR,
+        )
+    finally:
+        spaces.cleanup()
+
+    assert runtime.models == ["gpt-5.6-terra", "gpt-5.6-terra", "gpt-5.6-terra"]
+    assert runtime.efforts == [CodexReasoningEffort.MEDIUM] * 3
+    assert [result.telemetry.attempts[-1].model for result in results] == [
+        "gpt-5.6-terra",
+        "gpt-5.6-terra",
+    ]
+    assert direct.attempts[0].model == "gpt-5.6-terra"
 
 
 def test_context_uses_real_workspace_repository_and_same_verification(tmp_path: Path):

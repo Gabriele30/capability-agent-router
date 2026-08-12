@@ -23,6 +23,7 @@ from car.codex_write.runtime import (
     controlled_child_environment,
 )
 from car.codex_write.runtime_models import (
+    CodexReasoningEffort,
     ControlledCodexHealthStatus,
     ControlledCodexProcessResult,
     ControlledCodexWriteRequest,
@@ -242,6 +243,29 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         assert "Prior attempt failed" in call["stdin"]
         assert task not in argv
         assert "Prior attempt failed" not in argv
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_controlled_runtime_pins_model_and_reasoning_effort(git_repository: Path):
+    projected, manager, service = _projected(git_repository)
+    runner = FakeRunner([_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())])
+    runtime = _runtime(manager, runner, is_windows=True)
+    try:
+        request = _request(projected, model="gpt-5.6-terra").model_copy(
+            update={"reasoning_effort": CodexReasoningEffort.MEDIUM}
+        )
+        result = runtime.execute(request, CodexWriteAuthorization(authorized=True))
+        argv = runner.calls[1]["argv"]
+        assert result.process_succeeded and result.model == "gpt-5.6-terra"
+        assert argv[:5] == [
+            "C:/tools/codex.CMD",
+            "-c",
+            'windows.sandbox="unelevated"',
+            "-c",
+            'model_reasoning_effort="medium"',
+        ]
+        assert argv[5:7] == ["-m", "gpt-5.6-terra"]
     finally:
         assert service.cleanup(projected).removed
 

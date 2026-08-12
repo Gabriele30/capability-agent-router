@@ -24,6 +24,15 @@ class ControlledCodexHealthStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CodexReasoningEffort(StrEnum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+    MAX = "max"
+
+
 class ControlledCodexProcessResult(_StrictRuntimeModel):
     exit_code: int | None = None
     stdout: str = ""
@@ -39,6 +48,7 @@ class ControlledCodexWriteRequest(_StrictRuntimeModel):
     handoff: CodexHandoff | None = None
     timeout_seconds: float | None = Field(default=None, gt=0, le=900)
     model: str | None = Field(default=None, min_length=1, max_length=200)
+    reasoning_effort: CodexReasoningEffort | None = None
 
     @field_validator("task")
     @classmethod

@@ -84,6 +84,7 @@ def execute_coding_flow(
     codex_write_authorization: CodexWriteAuthorization | None = None,
     codex_write_paths: tuple[str, ...] = (),
     codex_model: str | None = None,
+    codex_reasoning_effort=None,
     patch_applier: SafePatchApplier | None = None,
     verification_coordinator: CodingVerificationCoordinator | None = None,
     telemetry_collector: ExecutionTelemetryCollector | None = None,
@@ -109,6 +110,7 @@ def execute_coding_flow(
             codex_write_authorization=codex_write_authorization,
             codex_write_paths=codex_write_paths,
             codex_model=codex_model,
+            codex_reasoning_effort=codex_reasoning_effort,
             controlled_write_pipeline=controlled_write_pipeline,
             collector=collector,
             route=route,
@@ -245,6 +247,7 @@ def execute_coding_flow(
             codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
             codex_write_paths=codex_write_paths,
             codex_model=codex_model,
+            codex_reasoning_effort=codex_reasoning_effort,
             controlled_write_pipeline=controlled_write_pipeline,
         )
         return _with_telemetry(
@@ -293,6 +296,7 @@ def execute_coding_flow(
         codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
         codex_write_paths=codex_write_paths,
         codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
         controlled_write_pipeline=controlled_write_pipeline,
     )
     collector.finish_attempt(
@@ -372,6 +376,7 @@ def _execute_direct_codex_controlled_write(
     codex_write_authorization,
     codex_write_paths,
     codex_model,
+    codex_reasoning_effort,
     controlled_write_pipeline,
     collector,
     route,
@@ -391,11 +396,16 @@ def _execute_direct_codex_controlled_write(
         codex_write_policy or CodexWritePolicy(),
         codex_write_authorization or CodexWriteAuthorization(),
     )
-    controlled = (
-        pipeline.execute(*arguments, codex_model=codex_model)
-        if codex_model
-        else pipeline.execute(*arguments)
-    )
+    if codex_reasoning_effort is not None:
+        controlled = pipeline.execute(
+            *arguments,
+            codex_model=codex_model,
+            codex_reasoning_effort=codex_reasoning_effort,
+        )
+    elif codex_model:
+        controlled = pipeline.execute(*arguments, codex_model=codex_model)
+    else:
+        controlled = pipeline.execute(*arguments)
     verification = _controlled_verification_telemetry(controlled.verification_result)
     collector.finish_attempt(
         attempt,

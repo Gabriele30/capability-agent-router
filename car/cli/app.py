@@ -32,6 +32,7 @@ from car.benchmark.service import run_manifest_benchmark
 from car.cli.presentation import present_execution_result
 from car.codex.runtime import LocalCodexRuntime
 from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
+from car.codex_write.runtime_models import CodexReasoningEffort
 from car.coding.gemini import GeminiCodingProvider
 from car.coding.models import (
     CodingFileContext,
@@ -68,7 +69,10 @@ def _build_codex_runtime() -> LocalCodexRuntime:
 
 
 def _build_benchmark_executor(
-    config: CarConfig, *, codex_model: str | None = None
+    config: CarConfig,
+    *,
+    codex_model: str | None = None,
+    codex_reasoning_effort: CodexReasoningEffort | None = None,
 ) -> CARBenchmarkExecutor:
     """Construct live-capable adapters only after the benchmark command is invoked."""
     return CARBenchmarkExecutor(
@@ -77,6 +81,7 @@ def _build_benchmark_executor(
             codex_runtime=_build_codex_runtime(),
             codex_write_policy=CodexWritePolicy(enabled=True),
             codex_model=codex_model,
+            codex_reasoning_effort=codex_reasoning_effort,
         )
     )
 
@@ -812,6 +817,10 @@ def benchmark(
     codex_model: Annotated[
         str | None, typer.Option("--codex-model", help="Pin the Codex model for this benchmark.")
     ] = None,
+    codex_effort: Annotated[
+        CodexReasoningEffort | None,
+        typer.Option("--codex-effort", help="Pin Codex reasoning effort for this benchmark."),
+    ] = None,
 ) -> None:
     """Run selected live benchmark strategies over isolated local fixtures."""
     try:
@@ -832,9 +841,16 @@ def benchmark(
             manifest,
             manifest_path.resolve(),
             strategies,
-            BenchmarkRunner(_build_benchmark_executor(config, codex_model=codex_model)),
+            BenchmarkRunner(
+                _build_benchmark_executor(
+                    config,
+                    codex_model=codex_model,
+                    codex_reasoning_effort=codex_effort,
+                )
+            ),
             gemini_model=config.providers.gemini.model,
             codex_model=codex_model,
+            codex_reasoning_effort=codex_effort.value if codex_effort else None,
         )
         if json_out:
             json_out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")

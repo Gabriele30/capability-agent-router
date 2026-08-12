@@ -31,6 +31,17 @@ DEFAULT_PRICE_CATALOG = ReferencePriceCatalog(
             long_context_input_multiplier=2,
             long_context_output_multiplier=1.5,
         ),
+        ModelPrice(
+            provider="codex",
+            model="gpt-5.6-terra",
+            input_per_million_usd=2.5,
+            cached_input_per_million_usd=0.25,
+            cache_write_input_per_million_usd=3.125,
+            output_per_million_usd=15,
+            source_url="https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+            source_label="OpenAI public API list price",
+            verified_on=date(2026, 8, 11),
+        ),
     ),
 )
 

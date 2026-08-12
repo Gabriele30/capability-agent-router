@@ -63,6 +63,7 @@ def process_verified_coding_outcome(
     codex_write_authorization: CodexWriteAuthorization | None = None,
     codex_write_paths: tuple[str, ...] = (),
     codex_model: str | None = None,
+    codex_reasoning_effort=None,
     controlled_write_pipeline: ControlledCodexWritePipeline | None = None,
 ) -> PostFailurePipelineResult:
     """Use existing evidence, handoff, decision, and coordinator boundaries once."""
@@ -131,11 +132,16 @@ def process_verified_coding_outcome(
             write_authorization,
             handoff,
         )
-        controlled = (
-            pipeline.execute(*arguments, codex_model=codex_model)
-            if codex_model
-            else pipeline.execute(*arguments)
-        )
+        if codex_reasoning_effort is not None:
+            controlled = pipeline.execute(
+                *arguments,
+                codex_model=codex_model,
+                codex_reasoning_effort=codex_reasoning_effort,
+            )
+        elif codex_model:
+            controlled = pipeline.execute(*arguments, codex_model=codex_model)
+        else:
+            controlled = pipeline.execute(*arguments)
         return PostFailurePipelineResult(
             escalation=escalation,
             handoff=handoff,

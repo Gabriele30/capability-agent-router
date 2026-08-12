@@ -123,7 +123,9 @@ def test_benchmark_cli_all_and_json_export_are_offline(
             str(manifest),
             "--all",
             "--codex-model",
-            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "--codex-effort",
+            "medium",
             "--json-out",
             str(output),
         ],
@@ -138,8 +140,10 @@ def test_benchmark_cli_all_and_json_export_are_offline(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metadata"]["manifest_hash"]
     assert payload["metadata"]["strategies"] == [item.value for item in BenchmarkStrategy]
-    assert payload["metadata"]["codex_model"] == "gpt-5.6-sol"
-    assert received["codex_model"] == "gpt-5.6-sol"
+    assert payload["metadata"]["codex_model"] == "gpt-5.6-terra"
+    assert payload["metadata"]["codex_reasoning_effort"] == "medium"
+    assert received["codex_model"] == "gpt-5.6-terra"
+    assert received["codex_reasoning_effort"].value == "medium"
     assert len(payload["task_results"]) == 3
     assert len(payload["summaries"]) == 3
     assert payload["summaries"][1]["cost_complete"] is False

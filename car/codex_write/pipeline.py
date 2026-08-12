@@ -60,6 +60,7 @@ class ControlledCodexWritePipeline:
         authorization: CodexWriteAuthorization,
         handoff=None,
         codex_model: str | None = None,
+        codex_reasoning_effort=None,
     ) -> ControlledCodexWritePipelineResult:
         if not policy.enabled:
             return _failure(CodexWriteFailureKind.DISABLED)
@@ -99,6 +100,7 @@ class ControlledCodexWritePipeline:
                     authorized_paths=authorized_paths,
                     handoff=handoff,
                     model=codex_model,
+                    reasoning_effort=codex_reasoning_effort,
                 ),
                 authorization,
             )
