@@ -294,6 +294,14 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         assert "Prior attempt failed" in call["stdin"]
         assert task not in argv
         assert "Prior attempt failed" not in argv
+        instruction = argv[-1]
+        assert "operation 'modify' only for an existing file" in instruction
+        assert "operation 'create' only for a new file" in instruction
+        assert "Each patch must be exactly one CAR-supported unified diff" in instruction
+        assert "'--- <path>' and '+++ <path>'" in instruction
+        assert "same repository-relative file as proposal.path" in instruction
+        assert "multi-file diffs" in instruction
+        assert "Scratch edits are irrelevant" in instruction
         assert not schema_path.exists() and not proposal_path.exists()
     finally:
         assert service.cleanup(projected).removed

@@ -63,11 +63,13 @@ class BenchmarkRunner:
             if isinstance(outcome, BenchmarkExecutionOutcome):
                 telemetry = outcome.telemetry
                 rejected_paths = outcome.rejected_paths
+                patch_violations = outcome.patch_violations
                 task_changed_paths = outcome.task_changed_paths
                 auxiliary_changed_paths = outcome.auxiliary_changed_paths
             else:
                 telemetry = outcome
                 rejected_paths = ()
+                patch_violations = ()
                 task_changed_paths = ()
                 auxiliary_changed_paths = ()
             attempt_costs = tuple(
@@ -95,6 +97,7 @@ class BenchmarkRunner:
                     else "strategy did not achieve verified success"
                 ),
                 rejected_paths=rejected_paths,
+                patch_violations=patch_violations,
                 task_changed_paths=task_changed_paths,
                 auxiliary_changed_paths=auxiliary_changed_paths,
             )

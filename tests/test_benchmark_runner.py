@@ -200,6 +200,28 @@ class _UnauthorizedRuntime:
         )
 
 
+class _InvalidProposalRuntime:
+    def execute(self, request, authorization):
+        return ControlledCodexWriteResult(
+            attempted=True,
+            process_succeeded=True,
+            final_message=json.dumps(
+                {
+                    "summary": "synthetic invalid Codex proposal",
+                    "changes": [
+                        {
+                            "path": "target.py",
+                            "operation": "modify",
+                            "patch": "SENSITIVE PATCH CONTENT",
+                        }
+                    ],
+                }
+            ),
+            baseline_digest=request.workspace.baseline_digest,
+            baseline_head_oid=request.workspace.baseline_head_oid,
+        )
+
+
 def _fixture(tmp_path: Path) -> Path:
     root = tmp_path / "fixture"
     root.mkdir()
@@ -350,6 +372,42 @@ def test_codex_only_preserves_validated_rejected_paths_in_benchmark_json(tmp_pat
     assert "stdout" not in serialized
     for forbidden in ("marker = 'rejected'", str(fixture.resolve()), "stdout", "stderr"):
         assert forbidden not in serialized
+
+
+def test_benchmark_exports_safe_patch_violation_without_patch_content(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    executor = CARBenchmarkExecutor(
+        BenchmarkExecutionDependencies(
+            coding_provider=_Provider("value = 2"),
+            codex_runtime=_ReadOnlyRuntime(),
+            controlled_pipeline=ControlledCodexWritePipeline(runtime=_InvalidProposalRuntime()),
+            codex_write_policy=CodexWritePolicy(enabled=True),
+        )
+    )
+    result = BenchmarkRunner(executor).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.CODEX_ONLY,)
+    )[0]
+
+    assert result.verified_success is False
+    assert result.telemetry.attempts[0].failure_kind == "unauthorized_change"
+    assert result.rejected_paths == ("target.py",)
+    assert len(result.patch_violations) == 1
+    violation = result.patch_violations[0]
+    assert violation.kind.value == "invalid_diff"
+    assert violation.path == "target.py"
+    assert violation.summary == "missing unified diff file headers"
+    serialized = result.model_dump_json()
+    for forbidden in ("SENSITIVE PATCH CONTENT", str(fixture.resolve()), "stdout", "stderr"):
+        assert forbidden not in serialized
+
+
+def test_successful_benchmark_has_no_patch_violations(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    result = BenchmarkRunner(_executor(_Provider("value = 2"), _ControlledRuntime())).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.CODEX_ONLY,)
+    )[0]
+    assert result.verified_success is True
+    assert result.patch_violations == ()
 
 
 def test_car_gemini_success_does_not_invoke_codex(tmp_path: Path):

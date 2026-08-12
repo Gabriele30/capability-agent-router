@@ -36,7 +36,15 @@ CONTROLLED_WRITE_INSTRUCTION = (
     "and CAR will apply it to a pristine baseline and verify it independently. "
     "Do not stage files, commit, create branches, modify Git metadata, delete or rename "
     "files, enable network access, or install dependencies. Do not add prose before or after "
-    "the final JSON proposal."
+    "the final JSON proposal. For each final ProposedFileChange, use operation 'modify' only "
+    "for an existing file. Use operation 'create' only for a new file. Do not invent other "
+    "operations. "
+    "Each patch must be exactly one CAR-supported unified diff. A modify patch must start with "
+    "'--- <path>' and '+++ <path>', contain at least one valid '@@' hunk with coherent counts, "
+    "and use header paths that identify the same repository-relative file as proposal.path. "
+    "Headers may use matching 'a/' and 'b/' prefixes. Do not use /dev/null for modify, and do "
+    "not include rename, delete, binary, mode-only, or multi-file diffs. Scratch edits are "
+    "irrelevant: do not derive the final proposal automatically from a scratch filesystem diff."
 )
 TRUNCATION_MARKER = "\n[truncated by CAR]"
 _ENVIRONMENT_KEYS = (

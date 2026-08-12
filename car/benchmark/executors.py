@@ -10,7 +10,11 @@ from car.application.coding_execution import (
 from car.application.coding_flow import execute_coding_flow
 from car.benchmark.context import build_execution_context
 from car.benchmark.models import BenchmarkStrategy
-from car.benchmark.results import BenchmarkExecutionOutcome, BenchmarkInvariantError
+from car.benchmark.results import (
+    BenchmarkExecutionOutcome,
+    BenchmarkInvariantError,
+    BenchmarkPatchViolation,
+)
 from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.codex_write.runtime_models import CodexReasoningEffort
@@ -103,6 +107,7 @@ class CARBenchmarkExecutor:
             auxiliary_changed_paths=_auxiliary_changed_paths(
                 pipeline.patch_validation if pipeline else None
             ),
+            patch_violations=_patch_violations(pipeline.patch_validation if pipeline else None),
         )
 
     def _codex_only(self, context) -> BenchmarkExecutionOutcome:
@@ -150,6 +155,7 @@ class CARBenchmarkExecutor:
                 source_state=result.source_state,
             ),
             rejected_paths=_rejected_paths(result),
+            patch_violations=_patch_violations(getattr(result, "delta_result", None)),
             task_changed_paths=_task_changed_paths(getattr(result, "delta_result", None)),
             auxiliary_changed_paths=_auxiliary_changed_paths(getattr(result, "delta_result", None)),
         )
@@ -184,6 +190,8 @@ class CARBenchmarkExecutor:
         delta = getattr(controlled, "delta_result", None)
         return BenchmarkExecutionOutcome(
             telemetry=result.telemetry,
+            rejected_paths=_rejected_paths(controlled) if controlled is not None else (),
+            patch_violations=_patch_violations(delta),
             task_changed_paths=(
                 _task_changed_paths(delta)
                 if delta is not None
@@ -243,6 +251,15 @@ def _rejected_paths(result) -> tuple[str, ...]:
                 if violation.path is not None
             )
     return tuple(paths) if isinstance(paths, list | tuple) else ()
+
+
+def _patch_violations(result) -> tuple[BenchmarkPatchViolation, ...]:
+    """Export only existing validator taxonomy, relative paths, and bounded summaries."""
+    violations = getattr(result, "violations", ())
+    return tuple(
+        BenchmarkPatchViolation(kind=item.kind, path=item.path, summary=item.summary)
+        for item in violations
+    )
 
 
 def _task_changed_paths(result) -> tuple[str, ...]:

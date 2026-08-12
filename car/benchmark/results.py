@@ -2,11 +2,12 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from car.benchmark.models import BenchmarkStrategy
 from car.coding.models import normalize_repository_relative_path
 from car.economics.models import ExecutionCost
+from car.patching.models import PatchViolationKind
 from car.telemetry.models import ExecutionTelemetry, FinalOutcome
 
 
@@ -20,10 +21,32 @@ class BenchmarkInvariantError(RuntimeError):
     """Signals invalid benchmark setup without exposing task/provider failure."""
 
 
+class BenchmarkPatchViolation(BaseModel):
+    """Bounded, content-free diagnostic evidence from an existing patch validation result."""
+
+    kind: PatchViolationKind
+    path: str | None = None
+    summary: str = Field(min_length=1, max_length=256)
+
+    @field_validator("path")
+    @classmethod
+    def path_is_repository_relative(cls, value: str | None) -> str | None:
+        return normalize_repository_relative_path(value) if value is not None else None
+
+    @field_validator("summary")
+    @classmethod
+    def summary_is_bounded_single_line(cls, value: str) -> str:
+        summary = " ".join(value.split())
+        if not summary:
+            raise ValueError("summary must not be blank")
+        return summary[:256]
+
+
 class BenchmarkExecutionOutcome(BaseModel):
     """Internal executor outcome with bounded failure metadata for benchmark export."""
 
     telemetry: ExecutionTelemetry
+    patch_violations: tuple[BenchmarkPatchViolation, ...] = ()
     rejected_paths: tuple[str, ...] = ()
     task_changed_paths: tuple[str, ...] = ()
     auxiliary_changed_paths: tuple[str, ...] = ()
@@ -47,6 +70,7 @@ class BenchmarkTaskResult(BaseModel):
     source_state: str | None = None
     failure_kind: BenchmarkFailureKind | None = None
     failure_reason: str | None = None
+    patch_violations: tuple[BenchmarkPatchViolation, ...] = ()
     rejected_paths: tuple[str, ...] = ()
     task_changed_paths: tuple[str, ...] = ()
     auxiliary_changed_paths: tuple[str, ...] = ()

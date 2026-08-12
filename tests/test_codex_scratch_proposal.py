@@ -18,6 +18,7 @@ from car.codex_write.projection import BaselineProjectionService
 from car.codex_write.runtime_models import ControlledCodexWriteResult
 from car.codex_write.workspace import IsolatedWorkspaceManager
 from car.execution.models import CommandSpec
+from car.patching.models import PatchViolationKind
 from car.telemetry.models import TokenUsage, UsageSource
 from car.verification.models import VerificationPlan
 
@@ -180,6 +181,68 @@ def test_mixed_final_proposal_is_atomically_rejected(git_repository: Path):
     assert result.failure_kind == CodexWriteFailureKind.UNAUTHORIZED_CHANGE
     assert (git_repository / "README.md").read_text(encoding="utf-8") == "# Test\n"
     assert not (git_repository / "tests/test_unapproved.py").exists()
+
+
+def test_proposal_validation_preserves_specific_patch_violation_kinds(git_repository: Path):
+    cases = [
+        (
+            _proposal(
+                [
+                    {
+                        "path": "README.md",
+                        "operation": "modify",
+                        "patch": "SENSITIVE PATCH CONTENT",
+                    }
+                ]
+            ),
+            PatchViolationKind.INVALID_DIFF,
+        ),
+        (
+            _proposal(
+                [
+                    {
+                        "path": "README.md",
+                        "operation": "create",
+                        "patch": (
+                            "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-# Test\n+# Changed\n"
+                        ),
+                    }
+                ]
+            ),
+            PatchViolationKind.OPERATION_MISMATCH,
+        ),
+        (
+            _proposal(
+                [
+                    {
+                        "path": "README.md",
+                        "operation": "modify",
+                        "patch": "--- a/other.py\n+++ b/other.py\n@@ -1 +1 @@\n-old\n+new\n",
+                    }
+                ]
+            ),
+            PatchViolationKind.PATH_MISMATCH,
+        ),
+        (
+            _proposal(
+                [
+                    {
+                        "path": "README.md",
+                        "operation": "create",
+                        "patch": "--- /dev/null\n+++ b/README.md\n@@ -0,0 +1 @@\n+replacement\n",
+                    }
+                ]
+            ),
+            PatchViolationKind.TARGET_ALREADY_EXISTS,
+        ),
+    ]
+
+    for proposal, kind in cases:
+        result = _execute(git_repository, _ScratchRuntime(proposal, {}))
+        assert result.failure_kind == CodexWriteFailureKind.UNAUTHORIZED_CHANGE
+        assert result.delta_result.violations[0].kind == kind
+        assert result.delta_result.violations[0].path == "README.md"
+        assert (git_repository / "README.md").read_text(encoding="utf-8") == "# Test\n"
 
 
 def test_safe_auxiliary_and_explicitly_authorized_test_remain_valid(git_repository: Path):
