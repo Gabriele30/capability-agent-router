@@ -31,11 +31,13 @@ class FakeCodingProvider:
         proposal: CodingProposal | None = None,
         status: ProviderStatus = ProviderStatus.CONFIGURED,
         error: CodingProviderFailure | None = None,
+        model: str | None = None,
     ) -> None:
         self.name = "fake-coding"
         self.proposal = proposal or make_proposal()
         self.status = status
         self.error = error
+        self.model = model
         self.call_count = 0
         self.last_context: CodingTaskContext | None = None
 
@@ -93,6 +95,15 @@ def test_valid_proposal_is_returned_once_without_workspace_mutation(git_reposito
     assert result.succeeded and result.proposal == provider.proposal
     assert provider.call_count == 1
     assert target.read_bytes() == b"before\n"
+
+
+def test_configured_provider_model_is_preserved_in_attempt_result():
+    provider = FakeCodingProvider(model="gemini-3.6-flash")
+
+    result = attempt_coding(make_context(), provider)
+
+    assert result.succeeded is True
+    assert result.model == "gemini-3.6-flash"
 
 
 @pytest.mark.parametrize(

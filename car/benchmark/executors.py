@@ -61,7 +61,11 @@ class CARBenchmarkExecutor:
         collector = ExecutionTelemetryCollector()
         route = context.routing.final_decision.route
         collector.start_execution(initial_route=route, task_category=context.case.category)
-        sequence = collector.start_attempt(AttemptCapability.GEMINI, provider="gemini")
+        sequence = collector.start_attempt(
+            AttemptCapability.GEMINI,
+            provider="gemini",
+            model=_provider_model(self._dependencies.coding_provider),
+        )
         result = execute_authorized_coding_pipeline(
             repository_root=context.workspace,
             routing_evaluation=context.routing,
@@ -200,3 +204,9 @@ def _rejected_paths(result) -> tuple[str, ...]:
     delta_result = getattr(result, "delta_result", None)
     paths = getattr(delta_result, "rejected_paths", ())
     return tuple(paths) if isinstance(paths, list | tuple) else ()
+
+
+def _provider_model(provider: CodingProvider) -> str | None:
+    """Read an optional provider-neutral configured model identifier safely."""
+    model = getattr(provider, "model", None)
+    return model if isinstance(model, str) and model else None

@@ -104,6 +104,7 @@ class CodingExecutionPolicy(BaseModel):
 
 class CodingAttemptResult(BaseModel):
     provider: str = Field(min_length=1)
+    model: str | None = None
     attempted: bool
     succeeded: bool
     proposal: CodingProposal | None = None

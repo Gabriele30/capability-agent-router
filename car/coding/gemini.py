@@ -44,6 +44,11 @@ class GeminiCodingProvider:
         self._health_provider = GeminiProvider(config, environment=self._environment)
         self.last_usage: TokenUsage | None = None
 
+    @property
+    def model(self) -> str | None:
+        """Return the configured model identity for telemetry only."""
+        return self.config.model
+
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(supports_code_changes=True)
 
@@ -155,8 +160,13 @@ class GeminiCodingProvider:
 
 
 def _usage_from_response(response: object) -> TokenUsage | None:
-    """Map only SDK-provided usage metadata; absent fields stay unknown."""
-    metadata = getattr(response, "usage_metadata", None)
+    """Map only SDK-provided usage metadata; absent fields stay unknown.
+
+    ``interactions.create`` responses expose ``usage`` with ``total_*_tokens``.
+    ``usage_metadata`` remains supported for compatibility with the existing
+    GenerateContent-shaped test and adapter responses.
+    """
+    metadata = getattr(response, "usage", None) or getattr(response, "usage_metadata", None)
     if metadata is None:
         return None
 
@@ -168,10 +178,12 @@ def _usage_from_response(response: object) -> TokenUsage | None:
         return None
 
     return TokenUsage(
-        input_tokens=value("prompt_token_count"),
-        output_tokens=value("candidates_token_count", "response_token_count"),
-        reasoning_tokens=value("thoughts_token_count"),
-        cached_input_tokens=value("cached_content_token_count"),
-        total_tokens=value("total_token_count"),
+        input_tokens=value("total_input_tokens", "prompt_token_count"),
+        output_tokens=value(
+            "total_output_tokens", "candidates_token_count", "response_token_count"
+        ),
+        reasoning_tokens=value("total_thought_tokens", "thoughts_token_count"),
+        cached_input_tokens=value("total_cached_tokens", "cached_content_token_count"),
+        total_tokens=value("total_tokens", "total_token_count"),
         source=UsageSource.PROVIDER_REPORTED,
     )

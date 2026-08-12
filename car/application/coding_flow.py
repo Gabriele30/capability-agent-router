@@ -100,7 +100,11 @@ def execute_coding_flow(
             else None
         ),
     )
-    gemini_attempt = collector.start_attempt(AttemptCapability.GEMINI, provider="gemini")
+    gemini_attempt = collector.start_attempt(
+        AttemptCapability.GEMINI,
+        provider="gemini",
+        model=_provider_model(coding_provider),
+    )
     coding = execute_authorized_coding_pipeline(
         repository_root=repository_root,
         routing_evaluation=routing_evaluation,
@@ -290,3 +294,9 @@ def _outcome(post_failure: PostFailurePipelineResult) -> CodingFlowOutcome:
 def _controlled_write_succeeded(post_failure: PostFailurePipelineResult) -> bool:
     """Only accepted controlled source changes can resolve the coding task."""
     return post_failure.selected_codex_mode == "controlled_write" and post_failure.succeeded
+
+
+def _provider_model(provider: CodingProvider) -> str | None:
+    """Read an optional provider-neutral configured model identifier safely."""
+    model = getattr(provider, "model", None)
+    return model if isinstance(model, str) and model else None

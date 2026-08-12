@@ -13,9 +13,10 @@ from car.router.models import Route
 
 
 class Response:
-    def __init__(self, output_text: str | None, usage_metadata=None) -> None:
+    def __init__(self, output_text: str | None, usage_metadata=None, usage=None) -> None:
         self.output_text = output_text
         self.usage_metadata = usage_metadata
+        self.usage = usage
 
 
 class FakeError(Exception):
@@ -132,6 +133,51 @@ def test_missing_or_partial_usage_remains_unknown_per_dimension():
     instance, _ = provider(Response(payload(), partial))
     instance.propose(context())
     assert instance.last_usage.input_tokens == 7 and instance.last_usage.output_tokens is None
+    missing, _ = provider(Response(payload()))
+    missing.propose(context())
+    assert missing.last_usage is None
+
+
+def test_interactions_usage_is_mapped_without_persisting_response_content():
+    usage = type(
+        "InteractionUsage",
+        (),
+        {
+            "total_input_tokens": 10,
+            "total_output_tokens": 4,
+            "total_thought_tokens": 2,
+            "total_cached_tokens": 3,
+            "total_tokens": 16,
+            "untrusted_response_text": "source code and prompt must not persist",
+        },
+    )()
+    instance, client = provider(Response(payload(), usage=usage))
+
+    instance.propose(context())
+
+    assert instance.last_usage and instance.last_usage.model_dump() == {
+        "input_tokens": 10,
+        "output_tokens": 4,
+        "reasoning_tokens": 2,
+        "cached_input_tokens": 3,
+        "total_tokens": 16,
+        "source": "provider_reported",
+    }
+    assert "untrusted_response_text" not in instance.last_usage.model_dump_json()
+    assert len(client.interactions.calls) == 1
+
+
+def test_interactions_usage_preserves_partial_dimensions_and_absence():
+    partial = type("InteractionUsage", (), {"total_input_tokens": 7})()
+    instance, _ = provider(Response(payload(), usage=partial))
+
+    instance.propose(context())
+
+    assert instance.last_usage and instance.last_usage.input_tokens == 7
+    assert instance.last_usage.output_tokens is None
+    assert instance.last_usage.reasoning_tokens is None
+    assert instance.last_usage.cached_input_tokens is None
+    assert instance.last_usage.total_tokens is None
     missing, _ = provider(Response(payload()))
     missing.propose(context())
     assert missing.last_usage is None

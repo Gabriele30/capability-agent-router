@@ -16,14 +16,23 @@ from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.codex_write.runtime_models import ControlledCodexWriteResult
 from car.coding.models import CodingProposal, FileChangeOperation, ProposedFileChange
 from car.providers.models import ProviderCapabilities, ProviderHealth, ProviderStatus
-from car.telemetry import AttemptCapability
+from car.telemetry import AttemptCapability, TokenUsage
+from car.telemetry.models import UsageSource
 
 
 class _Provider:
     name = "synthetic-gemini"
 
-    def __init__(self, replacement: str) -> None:
+    def __init__(
+        self,
+        replacement: str,
+        *,
+        model: str | None = None,
+        usage: TokenUsage | None = None,
+    ) -> None:
         self.replacement = replacement
+        self.model = model
+        self.last_usage = usage
         self.calls = 0
 
     def capabilities(self):
@@ -243,6 +252,39 @@ def test_car_gemini_success_does_not_invoke_codex(tmp_path: Path):
         assert [item.capability for item in telemetry.attempts] == [AttemptCapability.GEMINI]
         assert provider.calls == 1
         assert runtime.calls == 0
+    finally:
+        spaces.cleanup()
+
+
+def test_gemini_usage_and_model_propagate_to_benchmark_telemetry(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    usage = TokenUsage(
+        input_tokens=10,
+        output_tokens=4,
+        reasoning_tokens=2,
+        cached_input_tokens=3,
+        total_tokens=16,
+        source=UsageSource.PROVIDER_REPORTED,
+    )
+    provider = _Provider("value = 2", model="gemini-3.6-flash", usage=usage)
+    spaces = BenchmarkWorkspaceSet(fixture)
+    try:
+        executor = _executor(provider, _ControlledRuntime())
+        gemini = executor.execute(
+            _case(fixture),
+            spaces.workspaces[BenchmarkStrategy.GEMINI_ONLY],
+            BenchmarkStrategy.GEMINI_ONLY,
+        )
+        car = executor.execute(
+            _case(fixture),
+            spaces.workspaces[BenchmarkStrategy.CAR],
+            BenchmarkStrategy.CAR,
+        )
+        for telemetry in (gemini, car):
+            attempt = telemetry.attempts[0]
+            assert attempt.model == "gemini-3.6-flash"
+            assert attempt.usage == usage
+        assert provider.calls == 2
     finally:
         spaces.cleanup()
 

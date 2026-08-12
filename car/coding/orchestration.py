@@ -18,24 +18,31 @@ def attempt_coding(
 ) -> CodingAttemptResult:
     """Ask once for a proposal, validate it, and return data without side effects."""
     provider_name = getattr(provider, "name", provider.__class__.__name__)
+    provider_model = _provider_model(provider)
     if provider.health().status not in {ProviderStatus.CONFIGURED, ProviderStatus.AVAILABLE}:
-        return CodingAttemptResult(provider=provider_name, attempted=False, succeeded=False)
+        return CodingAttemptResult(
+            provider=provider_name,
+            model=provider_model,
+            attempted=False,
+            succeeded=False,
+        )
     try:
         proposal = provider.propose(context)
     except CodingProviderFailure as error:
-        return _failure(provider_name, error.kind)
+        return _failure(provider_name, provider_model, error.kind)
     except RuntimeError as error:
-        return _failure(provider_name, _normalized_error_kind(str(error)))
+        return _failure(provider_name, provider_model, _normalized_error_kind(str(error)))
     except Exception:
-        return _failure(provider_name, ProviderErrorKind.UNKNOWN_ERROR)
+        return _failure(provider_name, provider_model, ProviderErrorKind.UNKNOWN_ERROR)
     if not isinstance(proposal, CodingProposal):
-        return _failure(provider_name, ProviderErrorKind.INVALID_RESPONSE)
+        return _failure(provider_name, provider_model, ProviderErrorKind.INVALID_RESPONSE)
     try:
         _validate_policy(proposal, policy or CodingExecutionPolicy())
     except ValueError:
-        return _failure(provider_name, ProviderErrorKind.INVALID_REQUEST)
+        return _failure(provider_name, provider_model, ProviderErrorKind.INVALID_REQUEST)
     return CodingAttemptResult(
         provider=provider_name,
+        model=provider_model,
         attempted=True,
         succeeded=True,
         proposal=proposal,
@@ -53,13 +60,22 @@ def _validate_policy(proposal: CodingProposal, policy: CodingExecutionPolicy) ->
             raise ValueError("modifying files is disabled by policy")
 
 
-def _failure(provider: str, error_kind: ProviderErrorKind) -> CodingAttemptResult:
+def _failure(
+    provider: str, model: str | None, error_kind: ProviderErrorKind
+) -> CodingAttemptResult:
     return CodingAttemptResult(
         provider=provider,
+        model=model,
         attempted=True,
         succeeded=False,
         error_kind=error_kind,
     )
+
+
+def _provider_model(provider: CodingProvider) -> str | None:
+    """Read an optional provider-neutral configured model identifier safely."""
+    model = getattr(provider, "model", None)
+    return model if isinstance(model, str) and model else None
 
 
 def _normalized_error_kind(value: str) -> ProviderErrorKind:
