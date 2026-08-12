@@ -6,7 +6,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
@@ -27,12 +26,14 @@ from .runtime_models import (
 from .workspace import IsolatedWorkspaceManager
 
 CONTROLLED_WRITE_INSTRUCTION = (
-    "Work only in the current CAR-provided isolated workspace. Make the smallest change "
-    "needed through the car_apply_patch tool and within the write scope supplied in the request. "
-    "Do not access or modify the "
-    "source repository. "
+    "Work only in the current CAR-provided isolated scratch workspace. You may inspect and "
+    "experiment there, but CAR will discard its filesystem state. Do not access or modify the "
+    "source repository. Your FINAL agent message must be JSON matching CAR's CodingProposal "
+    "schema. Only that final proposal will be considered: it must contain only permitted paths, "
+    "and CAR will apply it to a pristine baseline and verify it independently. "
     "Do not stage files, commit, create branches, modify Git metadata, delete or rename "
-    "files, enable network access, or install dependencies. Finish with a concise summary."
+    "files, enable network access, or install dependencies. Do not add prose before or after "
+    "the final JSON proposal."
 )
 TRUNCATION_MARKER = "\n[truncated by CAR]"
 _ENVIRONMENT_KEYS = (
@@ -111,11 +112,7 @@ class SubprocessControlledCodexRunner:
 
 
 class ControlledCodexWriteRuntime:
-    """Run read-only Codex with a CAR-owned edit broker in an owned workspace.
-
-    The instruction is a behavioral request, not the security authority. Future delta
-    extraction and validation remain responsible for accepting filesystem changes.
-    """
+    """Run Codex in CAR-owned disposable scratch; only final JSON is considered later."""
 
     def __init__(
         self,
@@ -162,7 +159,6 @@ class ControlledCodexWriteRuntime:
                 is_windows=self._is_windows,
                 model=request.model,
                 reasoning_effort=request.reasoning_effort,
-                authorized_paths=request.authorized_paths,
             ),
             cwd=workspace.workspace.path,
             stdin=_stdin(request),
@@ -219,6 +215,7 @@ class ControlledCodexWriteRuntime:
                 stderr,
                 True,
                 exit_code=0,
+                usage=usage,
             )
         return ControlledCodexWriteResult(
             attempted=True,
@@ -280,7 +277,6 @@ def _execution_argv(
     is_windows: bool,
     model: str | None = None,
     reasoning_effort=None,
-    authorized_paths: tuple[str, ...] = (),
 ) -> list[str]:
     """Build the fixed command from the CAR-owned projected workspace only."""
     argv = [executable]
@@ -290,17 +286,6 @@ def _execution_argv(
         argv.extend(["-c", f'model_reasoning_effort="{reasoning_effort.value}"'])
     if model:
         argv.extend(["-m", model])
-    broker_args = ["-m", "car.codex_write.broker", "--workspace", str(workspace_path)]
-    for path in authorized_paths:
-        broker_args.extend(["--authorized-path", path])
-    argv.extend(
-        [
-            "-c",
-            f'mcp_servers.car_apply_patch.command="{sys.executable}"',
-            "-c",
-            "mcp_servers.car_apply_patch.args=" + json.dumps(broker_args),
-        ]
-    )
     argv.extend(
         [
             "--ask-for-approval",
@@ -308,7 +293,7 @@ def _execution_argv(
             "exec",
             "--ephemeral",
             "--sandbox",
-            "read-only",
+            "workspace-write",
             "--ignore-user-config",
             "--json",
             "--cd",
@@ -342,6 +327,16 @@ def _stdin(request: ControlledCodexWriteRequest) -> str:
             request.authorized_paths,
             safe_auxiliary_paths=request.safe_auxiliary_paths,
         ),
+        "\nSCRATCH WORKSPACE\n"
+        + (
+            "This workspace is untrusted scratch and will be discarded. "
+            "You may inspect or experiment here, including reading tests, "
+            "but only your final JSON CodingProposal is authoritative. "
+            "Do not include tests or verification files in that final proposal "
+            "unless they are explicitly task-authorized. CAR will validate the "
+            "complete proposal, apply it to a pristine baseline, and run final "
+            "verification there."
+        ),
         "\nThe filesystem delta remains untrusted and is not accepted by this runtime.",
     ]
     if request.handoff is not None:
@@ -361,6 +356,7 @@ def _result(
     *,
     timed_out: bool = False,
     exit_code: int | None = None,
+    usage: TokenUsage | None = None,
 ) -> ControlledCodexWriteResult:
     return ControlledCodexWriteResult(
         attempted=attempted,
@@ -370,6 +366,7 @@ def _result(
         timed_out=timed_out,
         stdout=stdout,
         stderr=stderr,
+        usage=usage,
         baseline_digest=workspace.baseline_digest if workspace is not None else None,
         baseline_head_oid=workspace.baseline_head_oid if workspace is not None else None,
     )

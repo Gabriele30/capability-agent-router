@@ -232,7 +232,16 @@ def _codex_verification(result) -> VerificationTelemetry | None:
 def _rejected_paths(result) -> tuple[str, ...]:
     """Extract CAR-validated repository-relative rejection metadata only."""
     delta_result = getattr(result, "delta_result", None)
-    paths = getattr(delta_result, "rejected_paths", ())
+    if isinstance(delta_result, dict):
+        paths = delta_result.get("rejected_paths", ())
+    else:
+        paths = getattr(delta_result, "rejected_paths", ())
+        if not paths:
+            paths = tuple(
+                violation.path
+                for violation in getattr(delta_result, "violations", ())
+                if violation.path is not None
+            )
     return tuple(paths) if isinstance(paths, list | tuple) else ()
 
 

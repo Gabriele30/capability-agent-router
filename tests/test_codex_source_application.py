@@ -1,5 +1,6 @@
 """Offline real-Git tests for pending-verification Codex source transactions."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -54,14 +55,31 @@ class _SyntheticRuntime:
 
     def execute(self, request, authorization):
         self.calls += 1
+        changes = []
         for path, content in self.changes.items():
             target = request.workspace.workspace.path / path
+            before = target.read_text(encoding="utf-8") if target.exists() else None
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
+            after = content.decode("utf-8")
+            if before is None:
+                patch = f"--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+{after.rstrip()}\n"
+                operation = "create"
+            else:
+                patch = (
+                    f"--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n"
+                    f"-{before.rstrip()}\n+{after.rstrip()}\n"
+                )
+                operation = "modify"
+            changes.append({"path": path, "operation": operation, "patch": patch})
         return ControlledCodexWriteResult(
             attempted=True,
             process_succeeded=True,
-            final_message="synthetic isolated write",
+            final_message=(
+                json.dumps({"summary": "synthetic proposal", "changes": changes})
+                if changes
+                else None
+            ),
             baseline_digest=request.workspace.baseline_digest,
             baseline_head_oid=request.workspace.baseline_head_oid,
         )
@@ -467,7 +485,7 @@ def test_pipeline_composes_real_workspace_apply_and_finalization(git_repository:
 
     assert result.accepted and result.source_state.value == "updated_and_accepted"
     assert result.workspace_cleanup_succeeded and runtime.calls == 1
-    assert (git_repository / "README.md").read_bytes() == b"Codex D\n"
+    assert (git_repository / "README.md").read_text(encoding="utf-8") == "Codex D\n"
 
 
 def test_pipeline_failure_paths_do_not_accept_or_leave_workspace(git_repository: Path):
@@ -498,7 +516,7 @@ def test_pipeline_failure_paths_do_not_accept_or_leave_workspace(git_repository:
         policy,
         CodexWriteAuthorization(authorized=True),
     )
-    assert no_change.failure_kind == CodexWriteFailureKind.NO_CHANGES
+    assert no_change.failure_kind == CodexWriteFailureKind.CODEX_INVALID_OUTPUT
     assert no_change.workspace_cleanup_succeeded
 
 

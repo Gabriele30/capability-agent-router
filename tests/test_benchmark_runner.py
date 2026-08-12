@@ -1,5 +1,6 @@
 """Offline execution tests for the three internal benchmark strategies."""
 
+import json
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -111,6 +112,10 @@ class _ControlledRuntime:
         self.calls += 1
         self.models.append(request.model)
         self.efforts.append(request.reasoning_effort)
+        auxiliary_exists = (
+            self.auxiliary_path is not None
+            and (request.workspace.workspace.path / self.auxiliary_path).exists()
+        )
         (request.workspace.workspace.path / "target.py").write_text(
             self.replacement, encoding="utf-8"
         )
@@ -118,9 +123,37 @@ class _ControlledRuntime:
             (request.workspace.workspace.path / self.auxiliary_path).write_text(
                 ".cache/\n", encoding="utf-8"
             )
+        changes = [
+            {
+                "path": "target.py",
+                "operation": "modify",
+                "patch": (
+                    "--- a/target.py\n+++ b/target.py\n@@ -1 +1 @@\n"
+                    f"-value = 1\n+{self.replacement.rstrip()}\n"
+                ),
+            }
+        ]
+        if self.auxiliary_path:
+            before = ".cache" if auxiliary_exists else ""
+            changes.append(
+                {
+                    "path": self.auxiliary_path,
+                    "operation": "modify" if auxiliary_exists else "create",
+                    "patch": (
+                        f"--- {'a/' + self.auxiliary_path if auxiliary_exists else '/dev/null'}\n"
+                        f"+++ b/{self.auxiliary_path}\n"
+                        + (
+                            f"@@ -1 +1 @@\n-{before}\n+.cache/\n"
+                            if auxiliary_exists
+                            else "@@ -0,0 +1 @@\n+.cache/\n"
+                        )
+                    ),
+                }
+            )
         return ControlledCodexWriteResult(
             attempted=True,
             process_succeeded=True,
+            final_message=json.dumps({"summary": "synthetic Codex proposal", "changes": changes}),
             usage=self.usage,
             baseline_digest=request.workspace.baseline_digest,
             baseline_head_oid=request.workspace.baseline_head_oid,
@@ -146,6 +179,21 @@ class _UnauthorizedRuntime:
         return ControlledCodexWriteResult(
             attempted=True,
             process_succeeded=True,
+            final_message=json.dumps(
+                {
+                    "summary": "synthetic unauthorized Codex proposal",
+                    "changes": [
+                        {
+                            "path": "unauthorized.py",
+                            "operation": "create",
+                            "patch": (
+                                "--- /dev/null\n+++ b/unauthorized.py\n"
+                                "@@ -0,0 +1 @@\n+marker = 'rejected'\n"
+                            ),
+                        }
+                    ],
+                }
+            ),
             usage=self.usage,
             baseline_digest=request.workspace.baseline_digest,
             baseline_head_oid=request.workspace.baseline_head_oid,

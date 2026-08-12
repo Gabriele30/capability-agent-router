@@ -190,7 +190,8 @@ def test_codex_request_communicates_the_complete_authorized_write_scope(git_repo
             assert f"- {path}" in prompt
         assert "Tests and verification files may be read" in prompt
         assert "MUST NOT be modified unless explicitly listed in TASK-AUTHORIZED PATHS." in prompt
-        assert "CAR independently validates the complete filesystem delta" in prompt
+        assert "only your final JSON CodingProposal is authoritative" in prompt
+        assert "pristine baseline" in prompt
     finally:
         assert service.cleanup(projected).removed
 
@@ -226,26 +227,14 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         expected = [executable]
         if executable.endswith(".CMD"):
             expected.extend(["-c", 'windows.sandbox="unelevated"'])
-        broker_args = [
-            "-m",
-            "car.codex_write.broker",
-            "--workspace",
-            str(projected.workspace.path),
-            "--authorized-path",
-            "README.md",
-        ]
         expected.extend(
             [
-                "-c",
-                f'mcp_servers.car_apply_patch.command="{sys.executable}"',
-                "-c",
-                "mcp_servers.car_apply_patch.args=" + json.dumps(broker_args),
                 "--ask-for-approval",
                 "never",
                 "exec",
                 "--ephemeral",
                 "--sandbox",
-                "read-only",
+                "workspace-write",
                 "--ignore-user-config",
                 "--json",
                 "--cd",
