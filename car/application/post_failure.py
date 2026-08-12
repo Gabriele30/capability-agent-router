@@ -54,7 +54,7 @@ def process_verified_coding_outcome(
     coding_attempt: CodingAttemptResult,
     patch_validation: PatchValidationResult | None,
     patch_apply: PatchApplyResult | None,
-    verification: CodingVerificationResult,
+    verification: CodingVerificationResult | None,
     codex_runtime: CodexRuntime,
     codex_execution_policy: CodexExecutionPolicy | None = None,
     handoff_policy: HandoffPolicy | None = None,
@@ -78,8 +78,21 @@ def process_verified_coding_outcome(
         verification_plan,
         handoff_policy,
     )
-    escalation = decide_escalation(handoff, verification_passed=verification.passed)
-    if verification.passed:
+    if verification is None and not _safe_without_verification(patch_apply):
+        return PostFailurePipelineResult(
+            escalation=EscalationDecision(
+                should_escalate=False,
+                reason=EscalationReason.WORKSPACE_STATE_UNCERTAIN,
+            ),
+            handoff=handoff,
+            attempted_codex=False,
+            succeeded=False,
+            outcome=PostFailurePipelineOutcome.WORKSPACE_UNCERTAIN,
+        )
+    escalation = decide_escalation(
+        handoff, verification_passed=bool(verification and verification.passed)
+    )
+    if verification and verification.passed:
         return PostFailurePipelineResult(
             escalation=escalation,
             attempted_codex=False,
@@ -160,3 +173,14 @@ def _outcome(result: CodexEscalationExecutionResult) -> PostFailurePipelineOutco
     if result.succeeded:
         return PostFailurePipelineOutcome.CODEX_EXECUTION_SUCCEEDED
     return PostFailurePipelineOutcome.CODEX_EXECUTION_FAILED
+
+
+def _safe_without_verification(patch_apply: PatchApplyResult | None) -> bool:
+    """A pre-verification failure may escalate only when no source write is uncertain."""
+    if patch_apply is None:
+        return True
+    return (
+        not patch_apply.succeeded
+        and patch_apply.rollback_failure_kind is None
+        and (patch_apply.rolled_back or not patch_apply.changed_files)
+    )

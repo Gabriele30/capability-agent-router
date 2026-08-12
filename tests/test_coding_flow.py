@@ -223,7 +223,7 @@ def test_disabled_and_ineligible_routes_do_not_enter_post_failure(tmp_path: Path
         and disabled_provider.calls == disabled_runtime.execute_calls == 0
     )
 
-    for route in (Route.L0, Route.CODEX, Route.PLAN):
+    for route in (Route.L0, Route.PLAN):
         provider, runtime = FakeProvider(_proposal("value = 1\n")), FakeCodexRuntime(tmp_path)
         result = _flow(tmp_path, route, provider, runtime)
         assert result.outcome == CodingFlowOutcome.ROUTE_NOT_ELIGIBLE

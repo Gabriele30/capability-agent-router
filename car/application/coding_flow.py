@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -22,6 +21,7 @@ from car.application.post_failure import (
 )
 from car.codex.runtime import CodexRuntime
 from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
+from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.coding.base import CodingProvider
 from car.coding.models import CodingExecutionPolicy, CodingTaskContext
 from car.coding.verification import CodingVerificationCoordinator
@@ -30,6 +30,7 @@ from car.patching.apply import SafePatchApplier
 from car.patching.models import PatchValidationPolicy
 from car.repository.models import RepositoryState
 from car.router.consultation import RoutingEvaluation
+from car.router.models import Route
 from car.telemetry import (
     AttemptCapability,
     ExecutionTelemetry,
@@ -38,9 +39,6 @@ from car.telemetry import (
     VerificationTelemetry,
 )
 from car.verification.models import VerificationPlan
-
-if TYPE_CHECKING:
-    from car.codex_write.pipeline import ControlledCodexWritePipeline
 
 
 class CodingFlowOutcome(StrEnum):
@@ -101,6 +99,19 @@ def execute_coding_flow(
             else None
         ),
     )
+    if route == Route.CODEX:
+        return _execute_direct_codex_controlled_write(
+            repository_root=repository_root,
+            coding_context=coding_context,
+            verification_plan=verification_plan,
+            codex_write_policy=codex_write_policy,
+            codex_write_authorization=codex_write_authorization,
+            codex_write_paths=codex_write_paths,
+            codex_model=codex_model,
+            controlled_write_pipeline=controlled_write_pipeline,
+            collector=collector,
+            route=route,
+        )
     gemini_attempt = collector.start_attempt(
         AttemptCapability.GEMINI,
         provider="gemini",
@@ -172,12 +183,75 @@ def execute_coding_flow(
             False,
         )
     pipeline = coding.pipeline_result
-    if pipeline is None or pipeline.coding_attempt is None or pipeline.verification is None:
+    if pipeline is None or pipeline.coding_attempt is None:
         return _with_telemetry(
             CodingFlowResult(
                 attempted=coding.attempted,
                 succeeded=False,
                 coding=coding,
+                outcome=CodingFlowOutcome.CODING_FAILED_NO_ESCALATION,
+            ),
+            collector,
+            route,
+            FinalOutcome.FAILED,
+            False,
+        )
+    if route != Route.GEMINI_TO_CODEX and pipeline.verification is None:
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=coding.attempted,
+                succeeded=False,
+                coding=coding,
+                outcome=CodingFlowOutcome.CODING_FAILED_NO_ESCALATION,
+            ),
+            collector,
+            route,
+            FinalOutcome.FAILED,
+            False,
+        )
+    if not _safe_for_codex_fallback(pipeline):
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=coding.attempted,
+                succeeded=False,
+                coding=coding,
+                outcome=(
+                    CodingFlowOutcome.WORKSPACE_UNCERTAIN
+                    if _pipeline_source_uncertain(pipeline)
+                    else CodingFlowOutcome.CODING_FAILED_NO_ESCALATION
+                ),
+            ),
+            collector,
+            route,
+            FinalOutcome.UNCERTAIN if _pipeline_source_uncertain(pipeline) else FinalOutcome.FAILED,
+            False,
+        )
+    if route != Route.GEMINI_TO_CODEX:
+        post_failure = process_verified_coding_outcome(
+            task=coding_context.task,
+            routing_evaluation=routing_evaluation,
+            repository_state=repository_state,
+            coding_context=coding_context,
+            coding_attempt=pipeline.coding_attempt,
+            patch_validation=pipeline.patch_validation,
+            patch_apply=pipeline.patch_apply,
+            verification=pipeline.verification,
+            codex_runtime=codex_runtime,
+            codex_execution_policy=codex_execution_policy,
+            handoff_policy=handoff_policy,
+            verification_plan=verification_plan,
+            codex_write_policy=codex_write_policy or CodexWritePolicy(),
+            codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
+            codex_write_paths=codex_write_paths,
+            codex_model=codex_model,
+            controlled_write_pipeline=controlled_write_pipeline,
+        )
+        return _with_telemetry(
+            CodingFlowResult(
+                attempted=coding.attempted,
+                succeeded=False,
+                coding=coding,
+                post_failure=post_failure,
                 outcome=CodingFlowOutcome.CODING_FAILED_NO_ESCALATION,
             ),
             collector,
@@ -192,9 +266,14 @@ def execute_coding_flow(
         and codex_write_authorization
         and codex_write_authorization.authorized
         and codex_write_paths
+        and verification_plan.commands
         else AttemptCapability.CODEX_READ_ONLY
     )
-    collector.record_escalation(AttemptCapability.GEMINI, target, reason="verification_failed")
+    collector.record_escalation(
+        AttemptCapability.GEMINI,
+        target,
+        reason="verification_failed" if pipeline.verification else "safe_pipeline_failure",
+    )
     codex_attempt = collector.start_attempt(target, provider="codex", model=codex_model)
     post_failure = process_verified_coding_outcome(
         task=coding_context.task,
@@ -283,6 +362,126 @@ def _verification_telemetry(coding):
     )
 
 
+def _execute_direct_codex_controlled_write(
+    *,
+    repository_root,
+    coding_context,
+    verification_plan,
+    codex_write_policy,
+    codex_write_authorization,
+    codex_write_paths,
+    codex_model,
+    controlled_write_pipeline,
+    collector,
+    route,
+) -> CodingFlowResult:
+    """Execute an authoritative Codex route without creating a Gemini attempt."""
+    attempt = collector.start_attempt(
+        AttemptCapability.CODEX_CONTROLLED_WRITE,
+        provider="codex",
+        model=codex_model,
+    )
+    pipeline = controlled_write_pipeline or ControlledCodexWritePipeline()
+    arguments = (
+        repository_root,
+        coding_context.task,
+        codex_write_paths,
+        verification_plan,
+        codex_write_policy or CodexWritePolicy(),
+        codex_write_authorization or CodexWriteAuthorization(),
+    )
+    controlled = (
+        pipeline.execute(*arguments, codex_model=codex_model)
+        if codex_model
+        else pipeline.execute(*arguments)
+    )
+    verification = _controlled_verification_telemetry(controlled.verification_result)
+    collector.finish_attempt(
+        attempt,
+        succeeded=controlled.accepted,
+        failure_kind=controlled.failure_kind.value if controlled.failure_kind else None,
+        usage=_controlled_result_usage(controlled),
+        verification=verification,
+    )
+    if verification:
+        collector.record_verification(verification)
+    coding = CodingPipelineApplicationResult(
+        attempted=controlled.attempted,
+        succeeded=controlled.accepted,
+        failure_kind=(
+            None if controlled.accepted else CodingPipelineApplicationFailureKind.PIPELINE_FAILED
+        ),
+    )
+    source_state = controlled.source_state
+    return _with_telemetry(
+        CodingFlowResult(
+            attempted=controlled.attempted,
+            succeeded=controlled.accepted,
+            coding=coding,
+            outcome=(
+                CodingFlowOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED
+                if controlled.accepted
+                else CodingFlowOutcome.WORKSPACE_UNCERTAIN
+                if source_state.value == "uncertain"
+                else CodingFlowOutcome.CODEX_CONTROLLED_WRITE_FAILED
+            ),
+        ),
+        collector,
+        route,
+        (
+            FinalOutcome.VERIFIED_SUCCESS
+            if controlled.accepted
+            else FinalOutcome.UNCERTAIN
+            if source_state.value == "uncertain"
+            else FinalOutcome.RESTORED
+        ),
+        controlled.accepted,
+        source_state,
+    )
+
+
+def _controlled_verification_telemetry(result) -> VerificationTelemetry | None:
+    if result is None:
+        return None
+    verification = result.verification_result
+    checks = getattr(verification, "checks", []) if verification else []
+    return VerificationTelemetry(
+        attempted=result.attempted,
+        passed=result.accepted,
+        check_count=len(checks),
+        passed_check_count=len(checks) if result.accepted else 0,
+        failed_check_count=0 if result.accepted else len(checks),
+        timeout_count=sum(check.timed_out for check in checks),
+    )
+
+
+def _safe_for_codex_fallback(pipeline) -> bool:
+    """Permit one fallback only when the Gemini attempt left source known safe."""
+    verification = pipeline.verification
+    if verification is not None:
+        return (
+            not verification.passed
+            and verification.rollback_failure is None
+            and verification.rolled_back
+        )
+    patch_apply = pipeline.patch_apply
+    if patch_apply is None:
+        return True
+    return (
+        not patch_apply.succeeded
+        and patch_apply.rollback_failure_kind is None
+        and (patch_apply.rolled_back or not patch_apply.changed_files)
+    )
+
+
+def _pipeline_source_uncertain(pipeline) -> bool:
+    verification = pipeline.verification
+    if verification is not None:
+        return verification.rollback_failure is not None
+    patch_apply = pipeline.patch_apply
+    return bool(patch_apply and patch_apply.rollback_failure_kind is not None)
+
+
 def _outcome(post_failure: PostFailurePipelineResult) -> CodingFlowOutcome:
     if post_failure.outcome == PostFailurePipelineOutcome.WORKSPACE_UNCERTAIN:
         return CodingFlowOutcome.WORKSPACE_UNCERTAIN
@@ -305,6 +504,10 @@ def _controlled_write_succeeded(post_failure: PostFailurePipelineResult) -> bool
 def _controlled_write_usage(post_failure: PostFailurePipelineResult):
     """Preserve structured runtime usage even when controlled changes are rejected."""
     return getattr(getattr(post_failure.controlled_write, "codex_result", None), "usage", None)
+
+
+def _controlled_result_usage(controlled):
+    return getattr(getattr(controlled, "codex_result", None), "usage", None)
 
 
 def _provider_model(provider: CodingProvider) -> str | None:

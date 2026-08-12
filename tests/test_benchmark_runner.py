@@ -14,8 +14,14 @@ from car.benchmark.workspace import BenchmarkWorkspaceSet
 from car.codex_write.models import CodexWritePolicy
 from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.codex_write.runtime_models import ControlledCodexWriteResult
+from car.coding.base import CodingProviderFailure
 from car.coding.models import CodingProposal, FileChangeOperation, ProposedFileChange
-from car.providers.models import ProviderCapabilities, ProviderHealth, ProviderStatus
+from car.providers.models import (
+    ProviderCapabilities,
+    ProviderErrorKind,
+    ProviderHealth,
+    ProviderStatus,
+)
 from car.telemetry import AttemptCapability, TokenUsage
 from car.telemetry.models import UsageSource
 
@@ -29,10 +35,12 @@ class _Provider:
         *,
         model: str | None = None,
         usage: TokenUsage | None = None,
+        error: ProviderErrorKind | None = None,
     ) -> None:
         self.replacement = replacement
         self.model = model
         self.last_usage = usage
+        self.error = error
         self.calls = 0
 
     def capabilities(self):
@@ -43,6 +51,8 @@ class _Provider:
 
     def propose(self, context):
         self.calls += 1
+        if self.error is not None:
+            raise CodingProviderFailure(self.error)
         before = context.files[0].content.rstrip()
         return CodingProposal(
             summary="synthetic benchmark change",
@@ -60,8 +70,9 @@ class _Provider:
 
 
 class _ControlledRuntime:
-    def __init__(self, replacement: str = "value = 2\n") -> None:
+    def __init__(self, replacement: str = "value = 2\n", usage: TokenUsage | None = None) -> None:
         self.replacement = replacement
+        self.usage = usage
         self.calls = 0
         self.models: list[str | None] = []
 
@@ -74,6 +85,7 @@ class _ControlledRuntime:
         return ControlledCodexWriteResult(
             attempted=True,
             process_succeeded=True,
+            usage=self.usage,
             baseline_digest=request.workspace.baseline_digest,
             baseline_head_oid=request.workspace.baseline_head_oid,
         )
@@ -128,11 +140,11 @@ def _fixture(tmp_path: Path) -> Path:
     return root
 
 
-def _case(root: Path) -> BenchmarkCase:
+def _case(root: Path, *, task: str = "Fix parser regression") -> BenchmarkCase:
     return BenchmarkCase(
         id="parser-regression",
         category="bugfix",
-        task="Fix parser regression",
+        task=task,
         fixture=root.name,
         authorized_paths=("target.py",),
         verification=("ruff",),
@@ -273,6 +285,126 @@ def test_car_gemini_success_does_not_invoke_codex(tmp_path: Path):
         assert runtime.calls == 0
     finally:
         spaces.cleanup()
+
+
+def test_car_direct_codex_route_uses_one_controlled_attempt_without_gemini(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    spaces = BenchmarkWorkspaceSet(fixture)
+    provider = _Provider("value = 2", model="gemini-3.6-flash")
+    runtime = _ControlledRuntime()
+    try:
+        telemetry = CARBenchmarkExecutor(
+            BenchmarkExecutionDependencies(
+                coding_provider=provider,
+                codex_runtime=_ReadOnlyRuntime(),
+                controlled_pipeline=ControlledCodexWritePipeline(runtime=runtime),
+                codex_write_policy=CodexWritePolicy(enabled=True),
+                codex_model="gpt-5.6-sol",
+            )
+        ).execute(
+            _case(fixture, task="Fix authentication bypass"),
+            spaces.workspaces[BenchmarkStrategy.CAR],
+            BenchmarkStrategy.CAR,
+        )
+        assert telemetry.initial_route.value == "codex"
+        assert telemetry.final_route.value == "codex"
+        assert telemetry.verified_success is True
+        assert telemetry.escalated is False
+        assert [attempt.capability for attempt in telemetry.attempts] == [
+            AttemptCapability.CODEX_CONTROLLED_WRITE
+        ]
+        assert telemetry.attempts[0].provider == "codex"
+        assert telemetry.attempts[0].model == "gpt-5.6-sol"
+        assert provider.calls == 0 and runtime.calls == 1
+    finally:
+        spaces.cleanup()
+
+
+def test_car_direct_codex_failure_preserves_controlled_write_result(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    spaces = BenchmarkWorkspaceSet(fixture)
+    provider = _Provider("value = 2")
+    runtime = _ControlledRuntime("value = (\n")
+    workspace = spaces.workspaces[BenchmarkStrategy.CAR]
+    before = (workspace / "target.py").read_bytes()
+    try:
+        telemetry = _executor(provider, runtime).execute(
+            _case(fixture, task="Fix authentication bypass"), workspace, BenchmarkStrategy.CAR
+        )
+        assert telemetry.verified_success is False and telemetry.escalated is False
+        assert telemetry.attempts[0].capability == AttemptCapability.CODEX_CONTROLLED_WRITE
+        assert telemetry.attempts[0].failure_kind == "verification_failed"
+        assert provider.calls == 0 and runtime.calls == 1
+        assert (workspace / "target.py").read_bytes() == before
+    finally:
+        spaces.cleanup()
+
+
+def test_car_safe_gemini_pipeline_failure_escalates_once_to_pinned_codex(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    spaces = BenchmarkWorkspaceSet(fixture)
+    provider = _Provider("value = 2", error=ProviderErrorKind.TIMEOUT)
+    runtime = _ControlledRuntime()
+    try:
+        telemetry = CARBenchmarkExecutor(
+            BenchmarkExecutionDependencies(
+                coding_provider=provider,
+                codex_runtime=_ReadOnlyRuntime(),
+                controlled_pipeline=ControlledCodexWritePipeline(runtime=runtime),
+                codex_write_policy=CodexWritePolicy(enabled=True),
+                codex_model="gpt-5.6-sol",
+            )
+        ).execute(_case(fixture), spaces.workspaces[BenchmarkStrategy.CAR], BenchmarkStrategy.CAR)
+        assert telemetry.verified_success is True and telemetry.escalated is True
+        assert telemetry.escalation_from == AttemptCapability.GEMINI
+        assert telemetry.escalation_to == AttemptCapability.CODEX_CONTROLLED_WRITE
+        assert [attempt.capability for attempt in telemetry.attempts] == [
+            AttemptCapability.GEMINI,
+            AttemptCapability.CODEX_CONTROLLED_WRITE,
+        ]
+        assert telemetry.attempts[0].failure_kind == "pipeline_failed"
+        assert telemetry.attempts[1].model == "gpt-5.6-sol"
+        assert provider.calls == runtime.calls == 1
+    finally:
+        spaces.cleanup()
+
+
+def test_car_escalation_keeps_both_attempt_costs(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    gemini_usage = TokenUsage(
+        input_tokens=100,
+        output_tokens=10,
+        source=UsageSource.PROVIDER_REPORTED,
+    )
+    codex_usage = TokenUsage(
+        input_tokens=100,
+        output_tokens=10,
+        source=UsageSource.RUNTIME_REPORTED,
+    )
+    result = BenchmarkRunner(
+        CARBenchmarkExecutor(
+            BenchmarkExecutionDependencies(
+                coding_provider=_Provider(
+                    "value = (", model="gemini-3.6-flash", usage=gemini_usage
+                ),
+                codex_runtime=_ReadOnlyRuntime(),
+                controlled_pipeline=ControlledCodexWritePipeline(
+                    runtime=_ControlledRuntime(usage=codex_usage)
+                ),
+                codex_write_policy=CodexWritePolicy(enabled=True),
+                codex_model="gpt-5.6-sol",
+            )
+        )
+    ).run_case(_case(fixture), fixture, (BenchmarkStrategy.CAR,))[0]
+
+    assert [attempt.usage for attempt in result.telemetry.attempts] == [
+        gemini_usage,
+        codex_usage,
+    ]
+    assert result.cost_complete is True
+    assert result.reference_cost is not None
+    assert result.reference_cost.reference_inference_cost_usd is not None
+    assert result.reference_cost.reference_inference_cost_usd > 0
 
 
 def test_gemini_usage_and_model_propagate_to_benchmark_telemetry(tmp_path: Path):
