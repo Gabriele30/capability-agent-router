@@ -64,7 +64,11 @@ def execute_coding_pipeline(
             outcome=CodingPipelineOutcome.ROUTE_NOT_ELIGIBLE,
         )
     policy = coding_policy or CodingExecutionPolicy()
-    attempt = attempt_coding(coding_context, coding_provider, policy)
+    validation_policy = patch_validation_policy or PatchValidationPolicy()
+    prompt_context = coding_context.model_copy(
+        update={"safe_auxiliary_paths": validation_policy.safe_auxiliary_paths}
+    )
+    attempt = attempt_coding(prompt_context, coding_provider, policy)
     if not attempt.succeeded:
         return CodingPipelineResult(
             attempted=attempt.attempted,
@@ -77,8 +81,8 @@ def execute_coding_pipeline(
                 else CodingPipelineOutcome.CODING_PROVIDER_FAILED
             ),
         )
-    validation = PatchValidator(patch_validation_policy).validate(
-        attempt.proposal, coding_context, repository_root, policy
+    validation = PatchValidator(validation_policy).validate(
+        attempt.proposal, prompt_context, repository_root, policy
     )
     if not validation.valid or validation.patch_set is None:
         return CodingPipelineResult(

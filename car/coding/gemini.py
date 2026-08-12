@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from pydantic import ValidationError
 
+from car.authorization import render_agent_write_scope
 from car.coding.base import CodingProviderFailure
 from car.coding.models import CodingProposal, CodingTaskContext
 from car.providers.gemini import (
@@ -142,6 +143,12 @@ class GeminiCodingProvider:
             "uncertainties; never provide chain-of-thought.\n\n"
             "USER TASK\n"
             f"{context.task}\n\n"
+            f"{
+                render_agent_write_scope(
+                    (file.path for file in context.files),
+                    safe_auxiliary_paths=context.safe_auxiliary_paths,
+                )
+            }\n\n"
             "REPOSITORY METADATA\n"
             f"Route: {context.route.value}\n"
             f"{metadata}\n\n"

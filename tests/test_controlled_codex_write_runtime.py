@@ -20,6 +20,7 @@ from car.codex_write.runtime import (
     ControlledCodexWriteRuntime,
     SubprocessControlledCodexRunner,
     _parse_jsonl_output,
+    _stdin,
     controlled_child_environment,
 )
 from car.codex_write.runtime_models import (
@@ -168,6 +169,28 @@ def test_disabled_and_unauthorized_gates_start_no_health_or_process(git_reposito
         result = unauthorized.execute(_request(projected), CodexWriteAuthorization())
         assert result.failure_kind == CodexWriteFailureKind.NOT_AUTHORIZED
         assert unauthorized_runner.calls == []
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_codex_request_communicates_the_complete_authorized_write_scope(git_repository: Path):
+    projected, _, service = _projected(git_repository)
+    try:
+        request = _request(projected).model_copy(update={"authorized_paths": ("double.py",)})
+        prompt = _stdin(request)
+
+        assert "WRITE SCOPE" in prompt
+        assert (
+            "You may modify, create, delete, or rename ONLY paths explicitly permitted below."
+            in prompt
+        )
+        assert "TASK-AUTHORIZED PATHS:\n- double.py" in prompt
+        assert "OPTIONAL SAFE AUXILIARY PATHS:" in prompt
+        for path in CodexWritePolicy().safe_auxiliary_paths:
+            assert f"- {path}" in prompt
+        assert "Tests and verification files may be read" in prompt
+        assert "MUST NOT be modified unless explicitly listed in TASK-AUTHORIZED PATHS." in prompt
+        assert "CAR independently validates the complete filesystem delta" in prompt
     finally:
         assert service.cleanup(projected).removed
 

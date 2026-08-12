@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+from car.authorization import render_agent_write_scope
 from car.escalation.handoff import render_codex_handoff_markdown
 from car.telemetry.models import TokenUsage, UsageSource
 
@@ -26,7 +27,8 @@ from .workspace import IsolatedWorkspaceManager
 
 CONTROLLED_WRITE_INSTRUCTION = (
     "Work only in the current CAR-provided isolated workspace. Make the smallest change "
-    "needed within the authorized scope. Do not access or modify the source repository. "
+    "needed within the write scope supplied in the request. Do not access or modify the "
+    "source repository. "
     "Do not stage files, commit, create branches, modify Git metadata, delete or rename "
     "files, enable network access, or install dependencies. Finish with a concise summary."
 )
@@ -320,8 +322,11 @@ def _stdin(request: ControlledCodexWriteRequest) -> str:
     sections = [
         "# CAR Controlled Codex Write Request",
         "\nTask:\n" + request.task,
-        "\nAuthorized repository-relative paths:\n"
-        + ("\n".join(f"- {path}" for path in request.authorized_paths) or "- none specified"),
+        "\n"
+        + render_agent_write_scope(
+            request.authorized_paths,
+            safe_auxiliary_paths=request.safe_auxiliary_paths,
+        ),
         "\nThe filesystem delta remains untrusted and is not accepted by this runtime.",
     ]
     if request.handoff is not None:

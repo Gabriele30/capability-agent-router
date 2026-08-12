@@ -98,6 +98,7 @@ class ControlledCodexWritePipeline:
                     workspace=workspace,
                     task=task,
                     authorized_paths=authorized_paths,
+                    safe_auxiliary_paths=policy.safe_auxiliary_paths,
                     handoff=handoff,
                     model=codex_model,
                     reasoning_effort=codex_reasoning_effort,

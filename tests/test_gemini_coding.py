@@ -106,6 +106,27 @@ def test_structured_coding_transport_request_and_prompt_privacy():
     assert client.close_count == 1
 
 
+def test_gemini_receives_the_same_explicit_write_scope_contract_as_codex():
+    instance, client = provider(Response(payload()))
+    coding_context = context().model_copy(
+        update={"files": [CodingFileContext(path="double.py", content="def double(value):\n")]}
+    )
+
+    instance.propose(coding_context)
+
+    prompt = client.interactions.calls[0]["input"]
+    assert "WRITE SCOPE" in prompt
+    assert (
+        "You may modify, create, delete, or rename ONLY paths explicitly permitted below." in prompt
+    )
+    assert "TASK-AUTHORIZED PATHS:\n- double.py" in prompt
+    assert "OPTIONAL SAFE AUXILIARY PATHS:" in prompt
+    assert "- .gitignore" in prompt and "- docs/**" in prompt
+    assert "Tests and verification files may be read" in prompt
+    assert "MUST NOT be modified unless explicitly listed in TASK-AUTHORIZED PATHS." in prompt
+    assert len(client.interactions.calls) == 1
+
+
 def test_structured_usage_metadata_is_preserved_without_an_extra_call():
     metadata = type(
         "Usage",

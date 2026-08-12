@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.coding.models import normalize_repository_relative_path
 from car.escalation.models import CodexHandoff
 from car.telemetry.models import TokenUsage
@@ -45,6 +46,7 @@ class ControlledCodexWriteRequest(_StrictRuntimeModel):
     workspace: ProjectedIsolatedWorkspace
     task: str = Field(min_length=1, max_length=10_000)
     authorized_paths: tuple[str, ...] = ()
+    safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS
     handoff: CodexHandoff | None = None
     timeout_seconds: float | None = Field(default=None, gt=0, le=900)
     model: str | None = Field(default=None, min_length=1, max_length=200)

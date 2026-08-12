@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.paths import normalize_repository_relative_path
 from car.providers.models import ProviderErrorKind, RepositoryClassificationContext
 from car.router.models import Route
@@ -30,6 +31,7 @@ class CodingTaskContext(BaseModel):
     repository: RepositoryClassificationContext
     files: list[CodingFileContext] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS
 
     @field_validator("task")
     @classmethod
