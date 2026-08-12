@@ -6,11 +6,14 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 
 from car.authorization import render_agent_write_scope
+from car.coding.models import CodingProposal
 from car.escalation.handoff import render_codex_handoff_markdown
 from car.telemetry.models import TokenUsage, UsageSource
 
@@ -152,27 +155,49 @@ class ControlledCodexWriteRuntime:
             return _result(_health_failure(health.status), workspace)
         if health.executable is None:
             return _result(CodexWriteFailureKind.CODEX_NOT_READY, workspace)
-        process = self._runner.run(
-            _execution_argv(
-                health.executable,
-                workspace_path=workspace.workspace.path,
-                is_windows=self._is_windows,
-                model=request.model,
-                reasoning_effort=request.reasoning_effort,
-            ),
-            cwd=workspace.workspace.path,
-            stdin=_stdin(request),
-            environment=controlled_child_environment(),
-            timeout_seconds=min(
-                request.timeout_seconds or self._policy.codex_write_timeout_seconds,
-                self._policy.codex_write_timeout_seconds,
-            ),
-        )
+        try:
+            with _proposal_output_files(workspace.workspace.parent) as output:
+                process = self._runner.run(
+                    _execution_argv(
+                        health.executable,
+                        workspace_path=workspace.workspace.path,
+                        schema_path=output.schema_path,
+                        proposal_path=output.proposal_path,
+                        is_windows=self._is_windows,
+                        model=request.model,
+                        reasoning_effort=request.reasoning_effort,
+                    ),
+                    cwd=workspace.workspace.path,
+                    stdin=_stdin(request),
+                    environment=controlled_child_environment(),
+                    timeout_seconds=min(
+                        request.timeout_seconds or self._policy.codex_write_timeout_seconds,
+                        self._policy.codex_write_timeout_seconds,
+                    ),
+                )
+                return self._process_result(process, workspace, request, output.proposal_path)
+        except OSError:
+            return _result(CodexWriteFailureKind.CODEX_PROCESS_ERROR, workspace)
+
+    def _process_result(
+        self,
+        process: ControlledCodexProcessResult,
+        workspace: ProjectedIsolatedWorkspace,
+        request: ControlledCodexWriteRequest,
+        proposal_path: Path,
+    ) -> ControlledCodexWriteResult:
         stdout = _truncate(process.stdout, self._policy.codex_max_stdout_chars)
         stderr = _truncate(process.stderr, self._policy.codex_max_stderr_chars)
+        parsed = _parse_jsonl_output(process.stdout)
+        usage = parsed[1] if parsed is not None else None
         if process.executable_not_found:
             return _result(
-                CodexWriteFailureKind.CODEX_CLI_NOT_FOUND, workspace, stdout, stderr, True
+                CodexWriteFailureKind.CODEX_CLI_NOT_FOUND,
+                workspace,
+                stdout,
+                stderr,
+                True,
+                usage=usage,
             )
         if process.timed_out:
             return _result(
@@ -182,10 +207,16 @@ class ControlledCodexWriteRuntime:
                 stderr,
                 True,
                 timed_out=True,
+                usage=usage,
             )
         if process.exit_code is None:
             return _result(
-                CodexWriteFailureKind.CODEX_PROCESS_ERROR, workspace, stdout, stderr, True
+                CodexWriteFailureKind.CODEX_PROCESS_ERROR,
+                workspace,
+                stdout,
+                stderr,
+                True,
+                usage=usage,
             )
         if process.exit_code != 0:
             return _result(
@@ -195,8 +226,8 @@ class ControlledCodexWriteRuntime:
                 stderr,
                 True,
                 exit_code=process.exit_code,
+                usage=usage,
             )
-        parsed = _parse_jsonl_output(process.stdout)
         if parsed is None:
             return _result(
                 CodexWriteFailureKind.CODEX_INVALID_OUTPUT,
@@ -206,7 +237,7 @@ class ControlledCodexWriteRuntime:
                 True,
                 exit_code=0,
             )
-        final_message, usage = parsed
+        final_message = _read_coding_proposal(proposal_path)
         if final_message is None:
             return _result(
                 CodexWriteFailureKind.CODEX_INVALID_OUTPUT,
@@ -274,6 +305,8 @@ def _execution_argv(
     executable: str,
     *,
     workspace_path: Path,
+    schema_path: Path,
+    proposal_path: Path,
     is_windows: bool,
     model: str | None = None,
     reasoning_effort=None,
@@ -296,6 +329,10 @@ def _execution_argv(
             "workspace-write",
             "--ignore-user-config",
             "--json",
+            "--output-schema",
+            str(schema_path),
+            "--output-last-message",
+            str(proposal_path),
             "--cd",
             str(workspace_path),
             CONTROLLED_WRITE_INSTRUCTION,
@@ -390,6 +427,38 @@ def _truncate(value: str, maximum: int) -> str:
 
 def _text(value: str | bytes | None) -> str:
     return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+
+
+class _ProposalOutputFiles:
+    def __init__(self, schema_path: Path, proposal_path: Path) -> None:
+        self.schema_path = schema_path
+        self.proposal_path = proposal_path
+
+
+@contextmanager
+def _proposal_output_files(parent: Path):
+    """Keep native Codex structured-output files outside source and for one invocation only."""
+    with tempfile.TemporaryDirectory(prefix="car-codex-output-", dir=parent) as directory:
+        root = Path(directory)
+        schema_path = root / "coding-proposal.schema.json"
+        proposal_path = root / "coding-proposal.json"
+        schema_path.write_text(json.dumps(CodingProposal.model_json_schema()), encoding="utf-8")
+        yield _ProposalOutputFiles(schema_path, proposal_path)
+
+
+def _read_coding_proposal(path: Path) -> str | None:
+    """Accept only native structured output that the authoritative model validates."""
+    try:
+        value = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not value.strip():
+        return None
+    try:
+        CodingProposal.model_validate_json(value)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    return value
 
 
 def _parse_jsonl_output(value: str) -> tuple[str | None, TokenUsage | None] | None:

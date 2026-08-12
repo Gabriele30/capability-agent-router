@@ -16,7 +16,6 @@ from car.codex_write.models import (
 )
 from car.codex_write.projection import BaselineProjectionService
 from car.codex_write.runtime import (
-    CONTROLLED_WRITE_INSTRUCTION,
     ControlledCodexWriteRuntime,
     SubprocessControlledCodexRunner,
     _parse_jsonl_output,
@@ -30,6 +29,7 @@ from car.codex_write.runtime_models import (
     ControlledCodexWriteRequest,
 )
 from car.codex_write.workspace import IsolatedWorkspaceManager
+from car.coding.models import CodingProposal
 from car.escalation.models import (
     CodexHandoff,
     CodingAttemptSummary,
@@ -58,11 +58,19 @@ def _policy(**values: object) -> CodexWritePolicy:
 
 class FakeRunner:
     def __init__(
-        self, results: list[ControlledCodexProcessResult], mutate_cwd: bool = False
+        self,
+        results: list[ControlledCodexProcessResult],
+        mutate_cwd: bool = False,
+        *,
+        proposal: str | None = None,
+        write_proposal: bool = True,
     ) -> None:
         self.results = results
         self.mutate_cwd = mutate_cwd
+        self.proposal = _valid_proposal() if proposal is None else proposal
+        self.write_proposal = write_proposal
         self.calls: list[dict[str, object]] = []
+        self.schemas: list[dict[str, object]] = []
 
     def run(self, argv, *, cwd, stdin, environment, timeout_seconds):
         self.calls.append(
@@ -76,7 +84,14 @@ class FakeRunner:
         )
         if self.mutate_cwd and len(self.calls) == 2:
             (cwd / "README.md").write_bytes(b"changed only in isolated workspace\n")
-        return self.results.pop(0)
+        result = self.results.pop(0)
+        if "--output-schema" in argv:
+            schema_path = Path(argv[argv.index("--output-schema") + 1])
+            self.schemas.append(json.loads(schema_path.read_text(encoding="utf-8")))
+        if "--output-last-message" in argv and result.exit_code == 0 and self.write_proposal:
+            proposal_path = Path(argv[argv.index("--output-last-message") + 1])
+            proposal_path.write_text(self.proposal, encoding="utf-8")
+        return result
 
 
 def _projected(source: Path):
@@ -140,6 +155,21 @@ def _jsonl(message: str = "Done", usage: dict[str, object] | None = None) -> str
     if usage is not None:
         events[-1]["usage"] = usage
     return "\n".join(json.dumps(event) for event in events)
+
+
+def _valid_proposal() -> str:
+    return json.dumps(
+        {
+            "summary": "synthetic proposal",
+            "changes": [
+                {
+                    "path": "README.md",
+                    "operation": "modify",
+                    "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-# Test\n+# Test\n",
+                }
+            ],
+        }
+    )
 
 
 def _runtime(manager, runner, *, executable="C:/tools/codex.CMD", policy=None, is_windows=None):
@@ -227,27 +257,20 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         expected = [executable]
         if executable.endswith(".CMD"):
             expected.extend(["-c", 'windows.sandbox="unelevated"'])
-        expected.extend(
-            [
-                "--ask-for-approval",
-                "never",
-                "exec",
-                "--ephemeral",
-                "--sandbox",
-                "workspace-write",
-                "--ignore-user-config",
-                "--json",
-                "--cd",
-                str(projected.workspace.path),
-                CONTROLLED_WRITE_INSTRUCTION,
-            ]
-        )
-        assert argv == expected
+        assert argv[: len(expected)] == expected
         if executable.endswith(".CMD"):
             assert argv[:3] == [executable, "-c", 'windows.sandbox="unelevated"']
         else:
             assert "windows.sandbox" not in " ".join(argv)
         assert argv.index("--ask-for-approval") < argv.index("exec")
+        assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+        assert "--json" in argv
+        schema_path = Path(argv[argv.index("--output-schema") + 1])
+        proposal_path = Path(argv[argv.index("--output-last-message") + 1])
+        assert runner.schemas == [CodingProposal.model_json_schema()]
+        assert schema_path.parent == proposal_path.parent
+        assert schema_path.parent != projected.workspace.path
+        assert schema_path.parent != git_repository
         assert argv[argv.index("--cd") + 1] == str(projected.workspace.path)
         assert call["cwd"] == Path(argv[argv.index("--cd") + 1]) == projected.workspace.path
         assert str(git_repository) not in argv
@@ -267,6 +290,7 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         assert "Prior attempt failed" in call["stdin"]
         assert task not in argv
         assert "Prior attempt failed" not in argv
+        assert not schema_path.exists() and not proposal_path.exists()
     finally:
         assert service.cleanup(projected).removed
 
@@ -463,7 +487,7 @@ def test_jsonl_usage_mapping_is_structured_and_cache_write_is_not_mispriced(git_
     runtime = _runtime(manager, runner)
     try:
         result = runtime.execute(_request(projected), CodexWriteAuthorization(authorized=True))
-        assert result.process_succeeded and result.final_message == "Done"
+        assert result.process_succeeded and result.final_message == _valid_proposal()
         assert result.usage and result.usage.input_tokens == 12552
         assert result.usage.cached_input_tokens == 9984
         assert result.usage.output_tokens == 5
@@ -527,6 +551,67 @@ def test_jsonl_missing_usage_is_unknown_and_malformed_output_fails_closed(git_re
         ).execute(_request(projected), CodexWriteAuthorization(authorized=True))
         assert malformed.failure_kind == CodexWriteFailureKind.CODEX_INVALID_OUTPUT
         assert _parse_jsonl_output('{"type":"turn.completed","usage":[]}') is None
+    finally:
+        assert service.cleanup(projected).removed
+
+
+@pytest.mark.parametrize(
+    ("proposal", "write_proposal"),
+    [("", False), ("", True), ("not-json", True), ("{}", True)],
+)
+def test_native_proposal_file_is_required_and_strict(
+    git_repository: Path, proposal: str, write_proposal: bool
+):
+    projected, manager, service = _projected(git_repository)
+    try:
+        runner = FakeRunner(
+            [_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())],
+            proposal=proposal,
+            write_proposal=write_proposal,
+        )
+        result = _runtime(manager, runner).execute(
+            _request(projected), CodexWriteAuthorization(authorized=True)
+        )
+        assert result.failure_kind == CodexWriteFailureKind.CODEX_INVALID_OUTPUT
+        assert result.final_message is None
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_jsonl_agent_message_is_never_a_proposal_fallback(git_repository: Path):
+    projected, manager, service = _projected(git_repository)
+    try:
+        runner = FakeRunner(
+            [_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl(_valid_proposal()))],
+            write_proposal=False,
+        )
+        result = _runtime(manager, runner).execute(
+            _request(projected), CodexWriteAuthorization(authorized=True)
+        )
+        assert result.failure_kind == CodexWriteFailureKind.CODEX_INVALID_OUTPUT
+        assert result.usage is None
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_nonzero_provider_result_keeps_available_jsonl_usage(git_repository: Path):
+    projected, manager, service = _projected(git_repository)
+    try:
+        runner = FakeRunner(
+            [
+                _ready(),
+                ControlledCodexProcessResult(
+                    exit_code=1,
+                    stdout=_jsonl(usage={"input_tokens": 7, "output_tokens": 2}),
+                ),
+            ]
+        )
+        result = _runtime(manager, runner).execute(
+            _request(projected), CodexWriteAuthorization(authorized=True)
+        )
+        assert result.failure_kind == CodexWriteFailureKind.CODEX_NONZERO_EXIT
+        assert result.usage and result.usage.input_tokens == 7
+        assert result.usage.output_tokens == 2
     finally:
         assert service.cleanup(projected).removed
 
