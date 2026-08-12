@@ -442,8 +442,30 @@ def _proposal_output_files(parent: Path):
         root = Path(directory)
         schema_path = root / "coding-proposal.schema.json"
         proposal_path = root / "coding-proposal.json"
-        schema_path.write_text(json.dumps(CodingProposal.model_json_schema()), encoding="utf-8")
+        schema_path.write_text(json.dumps(_codex_proposal_schema()), encoding="utf-8")
         yield _ProposalOutputFiles(schema_path, proposal_path)
+
+
+def _codex_proposal_schema() -> dict[str, object]:
+    """Derive Codex's strict-output schema from CAR's authoritative proposal model."""
+    schema = CodingProposal.model_json_schema()
+    _make_schema_strict(schema)
+    return schema
+
+
+def _make_schema_strict(node: object) -> None:
+    """Close every object and require its declared properties for Codex outputs."""
+    if isinstance(node, dict):
+        if node.get("type") == "object":
+            node["additionalProperties"] = False
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                node["required"] = list(properties)
+        for value in node.values():
+            _make_schema_strict(value)
+    elif isinstance(node, list):
+        for value in node:
+            _make_schema_strict(value)
 
 
 def _read_coding_proposal(path: Path) -> str | None:

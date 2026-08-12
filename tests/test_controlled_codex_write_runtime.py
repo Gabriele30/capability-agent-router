@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from car.codex_write.baseline import SourceBaselineService
 from car.codex_write.models import (
@@ -18,6 +19,7 @@ from car.codex_write.projection import BaselineProjectionService
 from car.codex_write.runtime import (
     ControlledCodexWriteRuntime,
     SubprocessControlledCodexRunner,
+    _codex_proposal_schema,
     _parse_jsonl_output,
     _stdin,
     controlled_child_environment,
@@ -168,6 +170,8 @@ def _valid_proposal() -> str:
                     "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-# Test\n+# Test\n",
                 }
             ],
+            "reasons": [],
+            "uncertainties": [],
         }
     )
 
@@ -267,7 +271,7 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         assert "--json" in argv
         schema_path = Path(argv[argv.index("--output-schema") + 1])
         proposal_path = Path(argv[argv.index("--output-last-message") + 1])
-        assert runner.schemas == [CodingProposal.model_json_schema()]
+        assert runner.schemas == [_codex_proposal_schema()]
         assert schema_path.parent == proposal_path.parent
         assert schema_path.parent != projected.workspace.path
         assert schema_path.parent != git_repository
@@ -614,6 +618,41 @@ def test_nonzero_provider_result_keeps_available_jsonl_usage(git_repository: Pat
         assert result.usage.output_tokens == 2
     finally:
         assert service.cleanup(projected).removed
+
+
+def test_codex_schema_is_closed_and_requires_every_declared_property():
+    schema = _codex_proposal_schema()
+
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["summary", "changes", "reasons", "uncertainties"]
+    assert schema["$defs"]["ProposedFileChange"]["additionalProperties"] is False
+
+    def assert_closed(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                assert node["additionalProperties"] is False
+            for value in node.values():
+                assert_closed(value)
+        elif isinstance(node, list):
+            for value in node:
+                assert_closed(value)
+
+    assert_closed(schema)
+
+
+def test_coding_proposal_accepts_strict_output_and_rejects_unexpected_fields():
+    proposal = CodingProposal.model_validate_json(_valid_proposal())
+    assert proposal.reasons == []
+    assert proposal.uncertainties == []
+
+    root_extra = json.loads(_valid_proposal()) | {"unexpected": "value"}
+    with pytest.raises(ValidationError):
+        CodingProposal.model_validate(root_extra)
+
+    nested_extra = json.loads(_valid_proposal())
+    nested_extra["changes"][0]["unexpected"] = "value"
+    with pytest.raises(ValidationError):
+        CodingProposal.model_validate(nested_extra)
 
 
 def test_write_runtime_has_no_auth_provider_or_apply_code_path():

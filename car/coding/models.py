@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.paths import normalize_repository_relative_path
@@ -48,6 +48,8 @@ class FileChangeOperation(StrEnum):
 
 
 class ProposedFileChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: str
     operation: FileChangeOperation
     patch: str
@@ -66,6 +68,8 @@ class ProposedFileChange(BaseModel):
 
 
 class CodingProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     summary: str
     changes: list[ProposedFileChange] = Field(min_length=1)
     reasons: list[str] = Field(default_factory=list)
