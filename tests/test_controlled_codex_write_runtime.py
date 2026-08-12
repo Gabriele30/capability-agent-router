@@ -226,14 +226,26 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
         expected = [executable]
         if executable.endswith(".CMD"):
             expected.extend(["-c", 'windows.sandbox="unelevated"'])
+        broker_args = [
+            "-m",
+            "car.codex_write.broker",
+            "--workspace",
+            str(projected.workspace.path),
+            "--authorized-path",
+            "README.md",
+        ]
         expected.extend(
             [
+                "-c",
+                f'mcp_servers.car_apply_patch.command="{sys.executable}"',
+                "-c",
+                "mcp_servers.car_apply_patch.args=" + json.dumps(broker_args),
                 "--ask-for-approval",
                 "never",
                 "exec",
                 "--ephemeral",
                 "--sandbox",
-                "workspace-write",
+                "read-only",
                 "--ignore-user-config",
                 "--json",
                 "--cd",

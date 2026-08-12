@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
@@ -27,7 +28,8 @@ from .workspace import IsolatedWorkspaceManager
 
 CONTROLLED_WRITE_INSTRUCTION = (
     "Work only in the current CAR-provided isolated workspace. Make the smallest change "
-    "needed within the write scope supplied in the request. Do not access or modify the "
+    "needed through the car_apply_patch tool and within the write scope supplied in the request. "
+    "Do not access or modify the "
     "source repository. "
     "Do not stage files, commit, create branches, modify Git metadata, delete or rename "
     "files, enable network access, or install dependencies. Finish with a concise summary."
@@ -109,7 +111,7 @@ class SubprocessControlledCodexRunner:
 
 
 class ControlledCodexWriteRuntime:
-    """Run fixed Codex workspace-write only in a currently owned projected workspace.
+    """Run read-only Codex with a CAR-owned edit broker in an owned workspace.
 
     The instruction is a behavioral request, not the security authority. Future delta
     extraction and validation remain responsible for accepting filesystem changes.
@@ -160,6 +162,7 @@ class ControlledCodexWriteRuntime:
                 is_windows=self._is_windows,
                 model=request.model,
                 reasoning_effort=request.reasoning_effort,
+                authorized_paths=request.authorized_paths,
             ),
             cwd=workspace.workspace.path,
             stdin=_stdin(request),
@@ -277,6 +280,7 @@ def _execution_argv(
     is_windows: bool,
     model: str | None = None,
     reasoning_effort=None,
+    authorized_paths: tuple[str, ...] = (),
 ) -> list[str]:
     """Build the fixed command from the CAR-owned projected workspace only."""
     argv = [executable]
@@ -286,6 +290,17 @@ def _execution_argv(
         argv.extend(["-c", f'model_reasoning_effort="{reasoning_effort.value}"'])
     if model:
         argv.extend(["-m", model])
+    broker_args = ["-m", "car.codex_write.broker", "--workspace", str(workspace_path)]
+    for path in authorized_paths:
+        broker_args.extend(["--authorized-path", path])
+    argv.extend(
+        [
+            "-c",
+            f'mcp_servers.car_apply_patch.command="{sys.executable}"',
+            "-c",
+            "mcp_servers.car_apply_patch.args=" + json.dumps(broker_args),
+        ]
+    )
     argv.extend(
         [
             "--ask-for-approval",
@@ -293,7 +308,7 @@ def _execution_argv(
             "exec",
             "--ephemeral",
             "--sandbox",
-            "workspace-write",
+            "read-only",
             "--ignore-user-config",
             "--json",
             "--cd",
