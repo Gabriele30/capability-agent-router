@@ -1,5 +1,6 @@
 """Offline safety tests for the isolated, controlled Codex write runtime."""
 
+import json
 import os
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from car.codex_write.runtime import (
     CONTROLLED_WRITE_INSTRUCTION,
     ControlledCodexWriteRuntime,
     SubprocessControlledCodexRunner,
+    _parse_jsonl_output,
     controlled_child_environment,
 )
 from car.codex_write.runtime_models import (
@@ -123,6 +125,18 @@ def _ready() -> ControlledCodexProcessResult:
     return ControlledCodexProcessResult(exit_code=0, stdout="logged in")
 
 
+def _jsonl(message: str = "Done", usage: dict[str, object] | None = None) -> str:
+    events: list[dict[str, object]] = [
+        {"type": "thread.started", "thread_id": "synthetic"},
+        {"type": "turn.started"},
+        {"type": "item.completed", "item": {"type": "agent_message", "text": message}},
+        {"type": "turn.completed"},
+    ]
+    if usage is not None:
+        events[-1]["usage"] = usage
+    return "\n".join(json.dumps(event) for event in events)
+
+
 def _runtime(manager, runner, *, executable="C:/tools/codex.CMD", policy=None, is_windows=None):
     return ControlledCodexWriteRuntime(
         workspace_manager=manager,
@@ -172,9 +186,7 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
 ):
     projected, manager, service = _projected(git_repository)
     task = "SUPER_SENSITIVE_TASK_MARKER fix README"
-    runner = FakeRunner(
-        [_ready(), _ready(), ControlledCodexProcessResult(exit_code=0, stdout="Done")]
-    )
+    runner = FakeRunner([_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())])
     runtime = _runtime(
         manager, runner, executable=executable, is_windows=executable.endswith(".CMD")
     )
@@ -196,6 +208,7 @@ def test_controlled_runtime_uses_fixed_workspace_write_argv_and_stdin(
                 "--sandbox",
                 "workspace-write",
                 "--ignore-user-config",
+                "--json",
                 "--cd",
                 str(projected.workspace.path),
                 CONTROLLED_WRITE_INSTRUCTION,
@@ -240,7 +253,7 @@ def test_health_uses_resolved_executable_and_environment_is_secret_safe(
     monkeypatch.setenv("GH_TOKEN", "github-secret")
     before = {key: os.environ[key] for key in ("GEMINI_API_KEY", "OPENAI_API_KEY", "GH_TOKEN")}
     runner = FakeRunner(
-        [_ready(), _ready(), ControlledCodexProcessResult(exit_code=0, stdout="Done")]
+        [_ready(), _ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())]
     )
     runtime = _runtime(manager, runner, executable="C:/resolved/codex.CMD")
     try:
@@ -325,7 +338,7 @@ def test_fake_runtime_change_is_confined_to_projected_workspace(git_repository: 
     source_before = (git_repository / "README.md").read_bytes()
     projected, manager, service = _projected(git_repository)
     runner = FakeRunner(
-        [_ready(), ControlledCodexProcessResult(exit_code=0, stdout="Done")], mutate_cwd=True
+        [_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())], mutate_cwd=True
     )
     runtime = _runtime(manager, runner)
     try:
@@ -380,6 +393,67 @@ def test_runtime_bounds_captured_output(git_repository: Path):
         assert len(result.stderr) <= 100
         assert result.stdout.endswith("[truncated by CAR]")
         assert result.stderr.endswith("[truncated by CAR]")
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_jsonl_usage_mapping_is_structured_and_cache_write_is_not_mispriced(git_repository: Path):
+    projected, manager, service = _projected(git_repository)
+    usage = {
+        "input_tokens": 12552,
+        "cached_input_tokens": 9984,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 2,
+    }
+    runner = FakeRunner(
+        [_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl(usage=usage))]
+    )
+    runtime = _runtime(manager, runner)
+    try:
+        result = runtime.execute(_request(projected), CodexWriteAuthorization(authorized=True))
+        assert result.process_succeeded and result.final_message == "Done"
+        assert result.usage and result.usage.input_tokens == 12552
+        assert result.usage.cached_input_tokens == 9984
+        assert result.usage.output_tokens == 5
+        assert result.usage.reasoning_tokens == 2
+        assert result.usage.total_tokens is None
+        assert result.usage.source.value == "provider_reported"
+        assert "cache_write_input_tokens" not in result.usage.model_dump_json()
+        assert "--json" in runner.calls[1]["argv"]
+        assert len(runner.calls) == 2
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_jsonl_missing_usage_is_unknown_and_malformed_output_fails_closed(git_repository: Path):
+    projected, manager, service = _projected(git_repository)
+    try:
+        missing = _runtime(
+            manager,
+            FakeRunner([_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())]),
+        ).execute(_request(projected), CodexWriteAuthorization(authorized=True))
+        assert missing.process_succeeded and missing.usage is None
+        partial = _runtime(
+            manager,
+            FakeRunner(
+                [
+                    _ready(),
+                    ControlledCodexProcessResult(
+                        exit_code=0,
+                        stdout=_jsonl(usage={"input_tokens": 3}),
+                    ),
+                ]
+            ),
+        ).execute(_request(projected), CodexWriteAuthorization(authorized=True))
+        assert partial.usage and partial.usage.input_tokens == 3
+        assert partial.usage.output_tokens is None and partial.usage.total_tokens is None
+        malformed = _runtime(
+            manager,
+            FakeRunner([_ready(), ControlledCodexProcessResult(exit_code=0, stdout="not-json")]),
+        ).execute(_request(projected), CodexWriteAuthorization(authorized=True))
+        assert malformed.failure_kind == CodexWriteFailureKind.CODEX_INVALID_OUTPUT
+        assert _parse_jsonl_output('{"type":"turn.completed","usage":[]}') is None
     finally:
         assert service.cleanup(projected).removed
 

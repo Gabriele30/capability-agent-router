@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Protocol
 
 from car.escalation.handoff import render_codex_handoff_markdown
+from car.telemetry.models import TokenUsage, UsageSource
 
 from .models import CodexWriteAuthorization, CodexWriteFailureKind, CodexWritePolicy
 from .projection import ProjectedIsolatedWorkspace
@@ -191,7 +193,17 @@ class ControlledCodexWriteRuntime:
                 True,
                 exit_code=process.exit_code,
             )
-        final_message = stdout.strip() or None
+        parsed = _parse_jsonl_output(process.stdout)
+        if parsed is None:
+            return _result(
+                CodexWriteFailureKind.CODEX_INVALID_OUTPUT,
+                workspace,
+                stdout,
+                stderr,
+                True,
+                exit_code=0,
+            )
+        final_message, usage = parsed
         if final_message is None:
             return _result(
                 CodexWriteFailureKind.CODEX_INVALID_OUTPUT,
@@ -208,6 +220,7 @@ class ControlledCodexWriteRuntime:
             exit_code=0,
             stdout=stdout,
             stderr=stderr,
+            usage=usage,
             baseline_digest=workspace.baseline_digest,
             baseline_head_oid=workspace.baseline_head_oid,
         )
@@ -266,6 +279,7 @@ def _execution_argv(executable: str, *, workspace_path: Path, is_windows: bool) 
             "--sandbox",
             "workspace-write",
             "--ignore-user-config",
+            "--json",
             "--cd",
             str(workspace_path),
             CONTROLLED_WRITE_INSTRUCTION,
@@ -345,3 +359,50 @@ def _truncate(value: str, maximum: int) -> str:
 
 def _text(value: str | bytes | None) -> str:
     return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+
+
+def _parse_jsonl_output(value: str) -> tuple[str | None, TokenUsage | None] | None:
+    """Read only official Codex JSONL events; never parse human terminal output."""
+    final_message: str | None = None
+    usage: TokenUsage | None = None
+    saw_event = False
+    for line in value.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            return None
+        saw_event = True
+        if event["type"] == "item.completed":
+            item = event.get("item")
+            if isinstance(item, dict) and item.get("type") == "agent_message":
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    final_message = text.strip()
+        elif event["type"] == "turn.completed":
+            raw_usage = event.get("usage")
+            if raw_usage is not None:
+                if not isinstance(raw_usage, dict):
+                    return None
+                usage = _usage_from_turn_completed(raw_usage)
+    return (final_message, usage) if saw_event else None
+
+
+def _usage_from_turn_completed(value: dict[str, object]) -> TokenUsage:
+    """Map provider-reported token dimensions without pricing cache writes."""
+
+    def token(name: str) -> int | None:
+        candidate = value.get(name)
+        return candidate if isinstance(candidate, int) and candidate >= 0 else None
+
+    return TokenUsage(
+        input_tokens=token("input_tokens"),
+        cached_input_tokens=token("cached_input_tokens"),
+        output_tokens=token("output_tokens"),
+        reasoning_tokens=token("reasoning_output_tokens"),
+        total_tokens=None,
+        source=UsageSource.PROVIDER_REPORTED,
+    )

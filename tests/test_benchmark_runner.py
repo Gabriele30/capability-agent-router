@@ -86,6 +86,9 @@ class _ReadOnlyRuntime:
 
 
 class _UnauthorizedRuntime:
+    def __init__(self, usage: TokenUsage | None = None) -> None:
+        self.usage = usage
+
     def execute(self, request, authorization):
         (request.workspace.workspace.path / "unauthorized.py").write_text(
             "marker = 'rejected'\n", encoding="utf-8"
@@ -93,6 +96,7 @@ class _UnauthorizedRuntime:
         return ControlledCodexWriteResult(
             attempted=True,
             process_succeeded=True,
+            usage=self.usage,
             baseline_digest=request.workspace.baseline_digest,
             baseline_head_oid=request.workspace.baseline_head_oid,
         )
@@ -201,11 +205,18 @@ def test_codex_only_failure_uses_controlled_rollback(tmp_path: Path):
 
 def test_codex_only_preserves_validated_rejected_paths_in_benchmark_json(tmp_path: Path):
     fixture = _fixture(tmp_path)
+    usage = TokenUsage(
+        input_tokens=12,
+        cached_input_tokens=8,
+        output_tokens=3,
+        reasoning_tokens=1,
+        source=UsageSource.PROVIDER_REPORTED,
+    )
     executor = CARBenchmarkExecutor(
         BenchmarkExecutionDependencies(
             coding_provider=_Provider("value = 2"),
             codex_runtime=_ReadOnlyRuntime(),
-            controlled_pipeline=ControlledCodexWritePipeline(runtime=_UnauthorizedRuntime()),
+            controlled_pipeline=ControlledCodexWritePipeline(runtime=_UnauthorizedRuntime(usage)),
             codex_write_policy=CodexWritePolicy(enabled=True),
         )
     )
@@ -216,6 +227,10 @@ def test_codex_only_preserves_validated_rejected_paths_in_benchmark_json(tmp_pat
     assert result.verified_success is False
     assert result.failure_kind == BenchmarkFailureKind.TASK_FAILED
     assert result.telemetry.attempts[0].failure_kind == "unauthorized_change"
+    assert result.telemetry.attempts[0].model is None
+    assert result.telemetry.attempts[0].usage == usage
+    assert result.cost_complete is False
+    assert result.reference_cost and result.reference_cost.reference_inference_cost_usd is None
     assert result.rejected_paths == ("unauthorized.py",)
     report = aggregate_benchmark(
         BenchmarkRunMetadata(
@@ -235,6 +250,8 @@ def test_codex_only_preserves_validated_rejected_paths_in_benchmark_json(tmp_pat
     assert str(fixture.resolve()) not in serialized
     assert "marker = 'rejected'" not in serialized
     assert "stdout" not in serialized
+    for forbidden in ("marker = 'rejected'", str(fixture.resolve()), "stdout", "stderr"):
+        assert forbidden not in serialized
 
 
 def test_car_gemini_success_does_not_invoke_codex(tmp_path: Path):

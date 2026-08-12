@@ -122,7 +122,7 @@ class CARBenchmarkExecutor:
             sequence,
             succeeded=result.accepted,
             failure_kind=result.failure_kind.value if result.failure_kind else None,
-            usage=TokenUsage(source=UsageSource.UNAVAILABLE),
+            usage=_codex_usage(result),
             verification=verification,
         )
         if verification:
@@ -204,6 +204,12 @@ def _rejected_paths(result) -> tuple[str, ...]:
     delta_result = getattr(result, "delta_result", None)
     paths = getattr(delta_result, "rejected_paths", ())
     return tuple(paths) if isinstance(paths, list | tuple) else ()
+
+
+def _codex_usage(result) -> TokenUsage:
+    """Forward only runtime-validated structured Codex usage."""
+    usage = getattr(getattr(result, "codex_result", None), "usage", None)
+    return usage if isinstance(usage, TokenUsage) else TokenUsage(source=UsageSource.UNAVAILABLE)
 
 
 def _provider_model(provider: CodingProvider) -> str | None:

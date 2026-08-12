@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from car.coding.models import normalize_repository_relative_path
 from car.escalation.models import CodexHandoff
+from car.telemetry.models import TokenUsage
 
 from .models import CodexWriteFailureKind
 from .projection import ProjectedIsolatedWorkspace
@@ -70,6 +71,7 @@ class ControlledCodexWriteResult(_StrictRuntimeModel):
     timed_out: bool = False
     stdout: str = ""
     stderr: str = ""
+    usage: TokenUsage | None = None
     baseline_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     baseline_head_oid: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
 
