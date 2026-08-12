@@ -10,14 +10,13 @@ from car.application.coding_execution import (
 from car.application.coding_flow import execute_coding_flow
 from car.benchmark.context import build_execution_context
 from car.benchmark.models import BenchmarkStrategy
-from car.benchmark.results import BenchmarkInvariantError
+from car.benchmark.results import BenchmarkExecutionOutcome, BenchmarkInvariantError
 from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.codex_write.pipeline import ControlledCodexWritePipeline
 from car.coding.base import CodingProvider
 from car.escalation.models import HandoffPolicy
 from car.telemetry import (
     AttemptCapability,
-    ExecutionTelemetry,
     ExecutionTelemetryCollector,
     FinalOutcome,
     TokenUsage,
@@ -43,6 +42,11 @@ class CARBenchmarkExecutor:
         self._dependencies = dependencies
 
     def execute(self, case, workspace, strategy):
+        """Preserve the telemetry-only executor contract used by existing callers."""
+        return self.execute_outcome(case, workspace, strategy).telemetry
+
+    def execute_outcome(self, case, workspace, strategy) -> BenchmarkExecutionOutcome:
+        """Return benchmark-only bounded failure metadata alongside telemetry."""
         try:
             context = build_execution_context(case, workspace, strategy)
         except Exception as error:
@@ -53,7 +57,7 @@ class CARBenchmarkExecutor:
             return self._codex_only(context)
         return self._car(context)
 
-    def _gemini_only(self, context) -> ExecutionTelemetry:
+    def _gemini_only(self, context) -> BenchmarkExecutionOutcome:
         collector = ExecutionTelemetryCollector()
         route = context.routing.final_decision.route
         collector.start_execution(initial_route=route, task_category=context.case.category)
@@ -80,15 +84,17 @@ class CARBenchmarkExecutor:
         )
         if verification:
             collector.record_verification(verification)
-        return collector.finish_execution(
-            final_route=route,
-            final_outcome=(
-                FinalOutcome.VERIFIED_SUCCESS if result.succeeded else FinalOutcome.RESTORED
-            ),
-            verified_success=result.succeeded,
+        return BenchmarkExecutionOutcome(
+            telemetry=collector.finish_execution(
+                final_route=route,
+                final_outcome=(
+                    FinalOutcome.VERIFIED_SUCCESS if result.succeeded else FinalOutcome.RESTORED
+                ),
+                verified_success=result.succeeded,
+            )
         )
 
-    def _codex_only(self, context) -> ExecutionTelemetry:
+    def _codex_only(self, context) -> BenchmarkExecutionOutcome:
         collector = ExecutionTelemetryCollector()
         collector.start_execution(
             initial_route=context.routing.final_decision.route, task_category=context.case.category
@@ -117,20 +123,23 @@ class CARBenchmarkExecutor:
         )
         if verification:
             collector.record_verification(verification)
-        return collector.finish_execution(
-            final_route=context.routing.final_decision.route,
-            final_outcome=(
-                FinalOutcome.VERIFIED_SUCCESS
-                if result.accepted
-                else FinalOutcome.UNCERTAIN
-                if result.source_state.value == "uncertain"
-                else FinalOutcome.RESTORED
+        return BenchmarkExecutionOutcome(
+            telemetry=collector.finish_execution(
+                final_route=context.routing.final_decision.route,
+                final_outcome=(
+                    FinalOutcome.VERIFIED_SUCCESS
+                    if result.accepted
+                    else FinalOutcome.UNCERTAIN
+                    if result.source_state.value == "uncertain"
+                    else FinalOutcome.RESTORED
+                ),
+                verified_success=result.accepted,
+                source_state=result.source_state,
             ),
-            verified_success=result.accepted,
-            source_state=result.source_state,
+            rejected_paths=_rejected_paths(result),
         )
 
-    def _car(self, context) -> ExecutionTelemetry:
+    def _car(self, context) -> BenchmarkExecutionOutcome:
         result = execute_coding_flow(
             repository_root=context.workspace,
             routing_evaluation=context.routing,
@@ -151,7 +160,7 @@ class CARBenchmarkExecutor:
         )
         if result.telemetry is None:
             raise RuntimeError("CAR application flow returned no telemetry")
-        return result.telemetry
+        return BenchmarkExecutionOutcome(telemetry=result.telemetry)
 
 
 def _coding_verification(result) -> VerificationTelemetry | None:
@@ -184,3 +193,10 @@ def _codex_verification(result) -> VerificationTelemetry | None:
         failed_check_count=0 if result.accepted else len(checks),
         timeout_count=sum(check.timed_out for check in checks),
     )
+
+
+def _rejected_paths(result) -> tuple[str, ...]:
+    """Extract CAR-validated repository-relative rejection metadata only."""
+    delta_result = getattr(result, "delta_result", None)
+    paths = getattr(delta_result, "rejected_paths", ())
+    return tuple(paths) if isinstance(paths, list | tuple) else ()

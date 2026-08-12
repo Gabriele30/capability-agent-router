@@ -1,11 +1,14 @@
 """Offline execution tests for the three internal benchmark strategies."""
 
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from car.benchmark import BenchmarkCase, BenchmarkRunner, BenchmarkStrategy
+from car.benchmark.aggregation import aggregate_benchmark
 from car.benchmark.context import build_execution_context
 from car.benchmark.executors import BenchmarkExecutionDependencies, CARBenchmarkExecutor
+from car.benchmark.models import BenchmarkRunMetadata
 from car.benchmark.results import BenchmarkFailureKind
 from car.benchmark.workspace import BenchmarkWorkspaceSet
 from car.codex_write.models import CodexWritePolicy
@@ -71,6 +74,19 @@ class _ReadOnlyRuntime:
 
     def execute(self, request):
         raise AssertionError("read-only Codex must not run in this benchmark")
+
+
+class _UnauthorizedRuntime:
+    def execute(self, request, authorization):
+        (request.workspace.workspace.path / "unauthorized.py").write_text(
+            "marker = 'rejected'\n", encoding="utf-8"
+        )
+        return ControlledCodexWriteResult(
+            attempted=True,
+            process_succeeded=True,
+            baseline_digest=request.workspace.baseline_digest,
+            baseline_head_oid=request.workspace.baseline_head_oid,
+        )
 
 
 def _fixture(tmp_path: Path) -> Path:
@@ -172,6 +188,44 @@ def test_codex_only_failure_uses_controlled_rollback(tmp_path: Path):
         assert (fixture / "target.py").read_text(encoding="utf-8") == "value = 1\n"
     finally:
         spaces.cleanup()
+
+
+def test_codex_only_preserves_validated_rejected_paths_in_benchmark_json(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    executor = CARBenchmarkExecutor(
+        BenchmarkExecutionDependencies(
+            coding_provider=_Provider("value = 2"),
+            codex_runtime=_ReadOnlyRuntime(),
+            controlled_pipeline=ControlledCodexWritePipeline(runtime=_UnauthorizedRuntime()),
+            codex_write_policy=CodexWritePolicy(enabled=True),
+        )
+    )
+    result = BenchmarkRunner(executor).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.CODEX_ONLY,)
+    )[0]
+
+    assert result.verified_success is False
+    assert result.failure_kind == BenchmarkFailureKind.TASK_FAILED
+    assert result.telemetry.attempts[0].failure_kind == "unauthorized_change"
+    assert result.rejected_paths == ("unauthorized.py",)
+    report = aggregate_benchmark(
+        BenchmarkRunMetadata(
+            run_id="test-run",
+            manifest_hash="a" * 64,
+            car_version="0.6.0",
+            started_at=datetime.now(UTC),
+            strategies=(BenchmarkStrategy.CODEX_ONLY,),
+            price_catalog_version="2026-08-11",
+            price_catalog_verified_on="2026-08-11",
+            cost_basis="public_api_list_price",
+        ),
+        (result,),
+    )
+    serialized = report.model_dump_json()
+    assert '"rejected_paths":["unauthorized.py"]' in serialized
+    assert str(fixture.resolve()) not in serialized
+    assert "marker = 'rejected'" not in serialized
+    assert "stdout" not in serialized
 
 
 def test_car_gemini_success_does_not_invoke_codex(tmp_path: Path):

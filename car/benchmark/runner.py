@@ -6,6 +6,7 @@ from typing import Protocol
 
 from car.benchmark.models import BenchmarkCase, BenchmarkStrategy
 from car.benchmark.results import (
+    BenchmarkExecutionOutcome,
     BenchmarkFailureKind,
     BenchmarkInvariantError,
     BenchmarkTaskResult,
@@ -18,7 +19,7 @@ from car.telemetry.models import ExecutionTelemetry, FinalOutcome
 class BenchmarkExecutor(Protocol):
     def execute(
         self, case: BenchmarkCase, workspace: Path, strategy: BenchmarkStrategy
-    ) -> ExecutionTelemetry: ...
+    ) -> ExecutionTelemetry | BenchmarkExecutionOutcome: ...
 
 
 class BenchmarkRunner:
@@ -53,7 +54,18 @@ class BenchmarkRunner:
     ) -> BenchmarkTaskResult:
         started = monotonic()
         try:
-            telemetry = self._executor.execute(case, workspace, strategy)
+            execute_outcome = getattr(self._executor, "execute_outcome", None)
+            outcome = (
+                execute_outcome(case, workspace, strategy)
+                if callable(execute_outcome)
+                else self._executor.execute(case, workspace, strategy)
+            )
+            if isinstance(outcome, BenchmarkExecutionOutcome):
+                telemetry = outcome.telemetry
+                rejected_paths = outcome.rejected_paths
+            else:
+                telemetry = outcome
+                rejected_paths = ()
             attempt_costs = tuple(
                 self._costs.calculate(provider=item.provider, model=item.model, usage=item.usage)
                 for item in telemetry.attempts
@@ -78,6 +90,7 @@ class BenchmarkRunner:
                     if telemetry.verified_success is True
                     else "strategy did not achieve verified success"
                 ),
+                rejected_paths=rejected_paths,
             )
         except BenchmarkInvariantError:
             return BenchmarkTaskResult(
