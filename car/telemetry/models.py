@@ -58,7 +58,9 @@ class TokenUsage(_TelemetryModel):
     output_tokens: int | None = Field(default=None, ge=0)
     reasoning_tokens: int | None = Field(default=None, ge=0)
     cached_input_tokens: int | None = Field(default=None, ge=0)
+    cache_write_input_tokens: int | None = Field(default=None, ge=0)
     total_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens_included_in_output: bool = False
     source: UsageSource = UsageSource.UNAVAILABLE
 
     @model_validator(mode="after")
@@ -68,6 +70,7 @@ class TokenUsage(_TelemetryModel):
             self.output_tokens,
             self.reasoning_tokens,
             self.cached_input_tokens,
+            self.cache_write_input_tokens,
             self.total_tokens,
         )
         if self.source == UsageSource.UNAVAILABLE and any(value is not None for value in values):

@@ -67,13 +67,16 @@ def _build_codex_runtime() -> LocalCodexRuntime:
     return LocalCodexRuntime()
 
 
-def _build_benchmark_executor(config: CarConfig) -> CARBenchmarkExecutor:
+def _build_benchmark_executor(
+    config: CarConfig, *, codex_model: str | None = None
+) -> CARBenchmarkExecutor:
     """Construct live-capable adapters only after the benchmark command is invoked."""
     return CARBenchmarkExecutor(
         BenchmarkExecutionDependencies(
             coding_provider=_build_coding_provider(config),
             codex_runtime=_build_codex_runtime(),
             codex_write_policy=CodexWritePolicy(enabled=True),
+            codex_model=codex_model,
         )
     )
 
@@ -806,6 +809,9 @@ def benchmark(
     json_out: Annotated[
         Path | None, typer.Option("--json-out", help="Write privacy-safe benchmark JSON.")
     ] = None,
+    codex_model: Annotated[
+        str | None, typer.Option("--codex-model", help="Pin the Codex model for this benchmark.")
+    ] = None,
 ) -> None:
     """Run selected live benchmark strategies over isolated local fixtures."""
     try:
@@ -826,7 +832,9 @@ def benchmark(
             manifest,
             manifest_path.resolve(),
             strategies,
-            BenchmarkRunner(_build_benchmark_executor(config)),
+            BenchmarkRunner(_build_benchmark_executor(config, codex_model=codex_model)),
+            gemini_model=config.providers.gemini.model,
+            codex_model=codex_model,
         )
         if json_out:
             json_out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")

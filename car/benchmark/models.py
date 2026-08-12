@@ -59,3 +59,5 @@ class BenchmarkRunMetadata(BaseModel):
     price_catalog_version: str
     price_catalog_verified_on: str
     cost_basis: str
+    gemini_model: str | None = None
+    codex_model: str | None = None

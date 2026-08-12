@@ -84,6 +84,7 @@ def execute_coding_flow(
     codex_write_policy: CodexWritePolicy | None = None,
     codex_write_authorization: CodexWriteAuthorization | None = None,
     codex_write_paths: tuple[str, ...] = (),
+    codex_model: str | None = None,
     patch_applier: SafePatchApplier | None = None,
     verification_coordinator: CodingVerificationCoordinator | None = None,
     telemetry_collector: ExecutionTelemetryCollector | None = None,
@@ -194,7 +195,7 @@ def execute_coding_flow(
         else AttemptCapability.CODEX_READ_ONLY
     )
     collector.record_escalation(AttemptCapability.GEMINI, target, reason="verification_failed")
-    codex_attempt = collector.start_attempt(target, provider="codex")
+    codex_attempt = collector.start_attempt(target, provider="codex", model=codex_model)
     post_failure = process_verified_coding_outcome(
         task=coding_context.task,
         routing_evaluation=routing_evaluation,
@@ -211,9 +212,14 @@ def execute_coding_flow(
         codex_write_policy=codex_write_policy or CodexWritePolicy(),
         codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
         codex_write_paths=codex_write_paths,
+        codex_model=codex_model,
         controlled_write_pipeline=controlled_write_pipeline,
     )
-    collector.finish_attempt(codex_attempt, succeeded=_controlled_write_succeeded(post_failure))
+    collector.finish_attempt(
+        codex_attempt,
+        succeeded=_controlled_write_succeeded(post_failure),
+        usage=_controlled_write_usage(post_failure),
+    )
     source_state = getattr(getattr(post_failure, "controlled_write", None), "source_state", None)
     final_outcome = (
         FinalOutcome.VERIFIED_SUCCESS
@@ -294,6 +300,11 @@ def _outcome(post_failure: PostFailurePipelineResult) -> CodingFlowOutcome:
 def _controlled_write_succeeded(post_failure: PostFailurePipelineResult) -> bool:
     """Only accepted controlled source changes can resolve the coding task."""
     return post_failure.selected_codex_mode == "controlled_write" and post_failure.succeeded
+
+
+def _controlled_write_usage(post_failure: PostFailurePipelineResult):
+    """Preserve structured runtime usage even when controlled changes are rejected."""
+    return getattr(getattr(post_failure.controlled_write, "codex_result", None), "usage", None)
 
 
 def _provider_model(provider: CodingProvider) -> str | None:

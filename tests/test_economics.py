@@ -1,3 +1,5 @@
+import pytest
+
 from car.economics.pricing import DEFAULT_PRICE_CATALOG, ReferenceCostCalculator
 from car.telemetry.models import TokenUsage, UsageSource
 
@@ -45,3 +47,38 @@ def test_unavailable_codex_usage_is_never_priced_as_zero_and_failures_aggregate(
     aggregate = calculator.aggregate((gemini, codex))
     assert not codex.complete and codex.reference_inference_cost_usd is None
     assert not aggregate.complete and aggregate.reference_inference_cost_usd is None
+
+
+def test_codex_cache_write_and_reasoning_breakdown_are_billed_once():
+    cost = ReferenceCostCalculator().calculate(
+        provider="codex",
+        model="gpt-5.6-sol",
+        usage=TokenUsage(
+            input_tokens=1000,
+            cached_input_tokens=200,
+            cache_write_input_tokens=100,
+            output_tokens=50,
+            reasoning_tokens=40,
+            reasoning_tokens_included_in_output=True,
+            source=UsageSource.PROVIDER_REPORTED,
+        ),
+    )
+    assert cost.complete
+    assert cost.reference_inference_cost_usd == pytest.approx(
+        (700 * 5 + 200 * 0.5 + 100 * 6.25 + 50 * 30) / 1_000_000
+    )
+
+
+def test_inconsistent_cache_breakdown_fails_closed():
+    cost = ReferenceCostCalculator().calculate(
+        provider="codex",
+        model="gpt-5.6-sol",
+        usage=TokenUsage(
+            input_tokens=10,
+            cached_input_tokens=8,
+            cache_write_input_tokens=3,
+            output_tokens=1,
+            source=UsageSource.PROVIDER_REPORTED,
+        ),
+    )
+    assert not cost.complete and cost.reference_inference_cost_usd is None

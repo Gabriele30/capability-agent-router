@@ -33,6 +33,7 @@ class BenchmarkExecutionDependencies:
     codex_write_policy: CodexWritePolicy = field(
         default_factory=lambda: CodexWritePolicy(enabled=True)
     )
+    codex_model: str | None = None
 
 
 class CARBenchmarkExecutor:
@@ -106,7 +107,7 @@ class CARBenchmarkExecutor:
         sequence = collector.start_attempt(
             AttemptCapability.CODEX_CONTROLLED_WRITE,
             provider="codex",
-            model=None,
+            model=self._dependencies.codex_model,
         )
         pipeline = self._dependencies.controlled_pipeline or ControlledCodexWritePipeline()
         result = pipeline.execute(
@@ -116,6 +117,7 @@ class CARBenchmarkExecutor:
             context.verification,
             self._dependencies.codex_write_policy,
             CodexWriteAuthorization(authorized=True),
+            codex_model=self._dependencies.codex_model,
         )
         verification = _codex_verification(result.verification_result)
         collector.finish_attempt(
@@ -160,6 +162,7 @@ class CARBenchmarkExecutor:
             codex_write_policy=self._dependencies.codex_write_policy,
             codex_write_authorization=CodexWriteAuthorization(authorized=True),
             codex_write_paths=context.case.authorized_paths,
+            codex_model=self._dependencies.codex_model,
             controlled_write_pipeline=self._dependencies.controlled_pipeline,
         )
         if result.telemetry is None:

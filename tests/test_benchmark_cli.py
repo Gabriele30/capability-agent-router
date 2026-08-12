@@ -106,11 +106,28 @@ def test_benchmark_cli_all_and_json_export_are_offline(
     source_before = (tmp_path / "fixture" / "target.py").read_bytes()
     executor = _OfflineExecutor()
     cli = import_module("car.cli.app")
-    monkeypatch.setattr(cli, "_build_benchmark_executor", lambda config: executor)
+    received: dict[str, object] = {}
+
+    def build(config, **kwargs):
+        received.update(kwargs)
+        return executor
+
+    monkeypatch.setattr(cli, "_build_benchmark_executor", build)
     monkeypatch.chdir(git_repository)
     output = tmp_path / "result.json"
 
-    result = runner.invoke(app, ["benchmark", str(manifest), "--all", "--json-out", str(output)])
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            str(manifest),
+            "--all",
+            "--codex-model",
+            "gpt-5.6-sol",
+            "--json-out",
+            str(output),
+        ],
+    )
 
     assert result.exit_code == 0
     assert executor.calls == list(BenchmarkStrategy)
@@ -121,6 +138,8 @@ def test_benchmark_cli_all_and_json_export_are_offline(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metadata"]["manifest_hash"]
     assert payload["metadata"]["strategies"] == [item.value for item in BenchmarkStrategy]
+    assert payload["metadata"]["codex_model"] == "gpt-5.6-sol"
+    assert received["codex_model"] == "gpt-5.6-sol"
     assert len(payload["task_results"]) == 3
     assert len(payload["summaries"]) == 3
     assert payload["summaries"][1]["cost_complete"] is False
@@ -136,7 +155,7 @@ def test_benchmark_cli_one_strategy_and_invalid_inputs(
     manifest = _fixture_and_manifest(tmp_path)
     executor = _OfflineExecutor()
     cli = import_module("car.cli.app")
-    monkeypatch.setattr(cli, "_build_benchmark_executor", lambda config: executor)
+    monkeypatch.setattr(cli, "_build_benchmark_executor", lambda config, **_: executor)
     monkeypatch.chdir(git_repository)
 
     one = runner.invoke(app, ["benchmark", str(manifest), "--strategy", "gemini-only"])

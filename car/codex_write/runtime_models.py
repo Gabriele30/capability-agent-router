@@ -38,6 +38,7 @@ class ControlledCodexWriteRequest(_StrictRuntimeModel):
     authorized_paths: tuple[str, ...] = ()
     handoff: CodexHandoff | None = None
     timeout_seconds: float | None = Field(default=None, gt=0, le=900)
+    model: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator("task")
     @classmethod
@@ -72,6 +73,7 @@ class ControlledCodexWriteResult(_StrictRuntimeModel):
     stdout: str = ""
     stderr: str = ""
     usage: TokenUsage | None = None
+    model: str | None = None
     baseline_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     baseline_head_oid: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
 

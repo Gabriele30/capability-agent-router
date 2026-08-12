@@ -18,6 +18,9 @@ def run_manifest_benchmark(
     manifest_path: Path,
     strategies: tuple[BenchmarkStrategy, ...],
     runner: BenchmarkRunner,
+    *,
+    gemini_model: str | None = None,
+    codex_model: str | None = None,
 ) -> BenchmarkReport:
     if not strategies:
         raise ValueError("at least one benchmark strategy is required")
@@ -30,6 +33,8 @@ def run_manifest_benchmark(
         price_catalog_version=DEFAULT_PRICE_CATALOG.version,
         price_catalog_verified_on=str(DEFAULT_PRICE_CATALOG.prices[0].verified_on),
         cost_basis=CostBasis.PUBLIC_API_LIST_PRICE.value,
+        gemini_model=gemini_model,
+        codex_model=codex_model,
     )
     results = tuple(
         item

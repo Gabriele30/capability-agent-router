@@ -88,12 +88,15 @@ def _projected(source: Path):
     return result.projected_workspace, manager, service
 
 
-def _request(workspace, task: str = "Fix synthetic marker") -> ControlledCodexWriteRequest:
+def _request(
+    workspace, task: str = "Fix synthetic marker", model: str | None = None
+) -> ControlledCodexWriteRequest:
     return ControlledCodexWriteRequest(
         workspace=workspace,
         task=task,
         authorized_paths=("README.md",),
         timeout_seconds=30,
+        model=model,
     )
 
 
@@ -419,9 +422,25 @@ def test_jsonl_usage_mapping_is_structured_and_cache_write_is_not_mispriced(git_
         assert result.usage.reasoning_tokens == 2
         assert result.usage.total_tokens is None
         assert result.usage.source.value == "provider_reported"
-        assert "cache_write_input_tokens" not in result.usage.model_dump_json()
+        assert result.usage.cache_write_input_tokens == 0
         assert "--json" in runner.calls[1]["argv"]
         assert len(runner.calls) == 2
+    finally:
+        assert service.cleanup(projected).removed
+
+
+def test_explicit_model_is_forwarded_once_and_preserved(git_repository: Path):
+    projected, manager, service = _projected(git_repository)
+    runner = FakeRunner([_ready(), ControlledCodexProcessResult(exit_code=0, stdout=_jsonl())])
+    runtime = _runtime(manager, runner)
+    try:
+        result = runtime.execute(
+            _request(projected, model="gpt-5.6-sol"), CodexWriteAuthorization(authorized=True)
+        )
+        argv = runner.calls[1]["argv"]
+        assert argv.count("-m") == 1
+        assert argv[argv.index("-m") + 1] == "gpt-5.6-sol"
+        assert result.model == "gpt-5.6-sol"
     finally:
         assert service.cleanup(projected).removed
 

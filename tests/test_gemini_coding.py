@@ -160,7 +160,9 @@ def test_interactions_usage_is_mapped_without_persisting_response_content():
         "output_tokens": 4,
         "reasoning_tokens": 2,
         "cached_input_tokens": 3,
+        "cache_write_input_tokens": None,
         "total_tokens": 16,
+        "reasoning_tokens_included_in_output": False,
         "source": "provider_reported",
     }
     assert "untrusted_response_text" not in instance.last_usage.model_dump_json()

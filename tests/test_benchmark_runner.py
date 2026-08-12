@@ -63,9 +63,11 @@ class _ControlledRuntime:
     def __init__(self, replacement: str = "value = 2\n") -> None:
         self.replacement = replacement
         self.calls = 0
+        self.models: list[str | None] = []
 
     def execute(self, request, authorization):
         self.calls += 1
+        self.models.append(request.model)
         (request.workspace.workspace.path / "target.py").write_text(
             self.replacement, encoding="utf-8"
         )
@@ -334,6 +336,28 @@ def test_three_strategy_runner_isolated_authoritative_and_offline(tmp_path: Path
     assert BenchmarkWorkspaceSet.identity(fixture) == original
     serialized = "".join(result.model_dump_json() for result in results)
     assert str(fixture.resolve()) not in serialized
+
+
+def test_pinned_codex_model_is_shared_by_codex_only_and_car_escalation(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    runtime = _ControlledRuntime()
+    executor = CARBenchmarkExecutor(
+        BenchmarkExecutionDependencies(
+            coding_provider=_Provider("value = ("),
+            codex_runtime=_ReadOnlyRuntime(),
+            controlled_pipeline=ControlledCodexWritePipeline(runtime=runtime),
+            codex_write_policy=CodexWritePolicy(enabled=True),
+            codex_model="gpt-5.6-sol",
+        )
+    )
+    results = BenchmarkRunner(executor).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.CODEX_ONLY, BenchmarkStrategy.CAR)
+    )
+    assert runtime.models == ["gpt-5.6-sol", "gpt-5.6-sol"]
+    assert [result.telemetry.attempts[-1].model for result in results] == [
+        "gpt-5.6-sol",
+        "gpt-5.6-sol",
+    ]
 
 
 def test_context_uses_real_workspace_repository_and_same_verification(tmp_path: Path):

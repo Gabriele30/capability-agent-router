@@ -156,6 +156,7 @@ class ControlledCodexWriteRuntime:
                 health.executable,
                 workspace_path=workspace.workspace.path,
                 is_windows=self._is_windows,
+                model=request.model,
             ),
             cwd=workspace.workspace.path,
             stdin=_stdin(request),
@@ -221,6 +222,7 @@ class ControlledCodexWriteRuntime:
             stdout=stdout,
             stderr=stderr,
             usage=usage,
+            model=request.model,
             baseline_digest=workspace.baseline_digest,
             baseline_head_oid=workspace.baseline_head_oid,
         )
@@ -265,11 +267,15 @@ class ControlledCodexWriteRuntime:
         return self._workspace_manager.owns(workspace)
 
 
-def _execution_argv(executable: str, *, workspace_path: Path, is_windows: bool) -> list[str]:
+def _execution_argv(
+    executable: str, *, workspace_path: Path, is_windows: bool, model: str | None = None
+) -> list[str]:
     """Build the fixed command from the CAR-owned projected workspace only."""
     argv = [executable]
     if is_windows:
         argv.extend(["-c", 'windows.sandbox="unelevated"'])
+    if model:
+        argv.extend(["-m", model])
     argv.extend(
         [
             "--ask-for-approval",
@@ -407,6 +413,8 @@ def _usage_from_turn_completed(value: dict[str, object]) -> TokenUsage:
         cached_input_tokens=token("cached_input_tokens"),
         output_tokens=token("output_tokens"),
         reasoning_tokens=token("reasoning_output_tokens"),
+        cache_write_input_tokens=token("cache_write_input_tokens"),
         total_tokens=None,
+        reasoning_tokens_included_in_output=True,
         source=UsageSource.PROVIDER_REPORTED,
     )

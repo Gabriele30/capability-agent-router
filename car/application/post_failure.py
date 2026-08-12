@@ -62,6 +62,7 @@ def process_verified_coding_outcome(
     codex_write_policy: CodexWritePolicy | None = None,
     codex_write_authorization: CodexWriteAuthorization | None = None,
     codex_write_paths: tuple[str, ...] = (),
+    codex_model: str | None = None,
     controlled_write_pipeline: ControlledCodexWritePipeline | None = None,
 ) -> PostFailurePipelineResult:
     """Use existing evidence, handoff, decision, and coordinator boundaries once."""
@@ -108,7 +109,7 @@ def process_verified_coding_outcome(
     )
     if write_eligible:
         pipeline = controlled_write_pipeline or ControlledCodexWritePipeline()
-        controlled = pipeline.execute(
+        arguments = (
             repository_state.root,
             task,
             codex_write_paths,
@@ -116,6 +117,11 @@ def process_verified_coding_outcome(
             write_policy,
             write_authorization,
             handoff,
+        )
+        controlled = (
+            pipeline.execute(*arguments, codex_model=codex_model)
+            if codex_model
+            else pipeline.execute(*arguments)
         )
         return PostFailurePipelineResult(
             escalation=escalation,

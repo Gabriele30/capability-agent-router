@@ -13,6 +13,7 @@ class ModelPrice(BaseModel):
     model: str
     input_per_million_usd: float = Field(ge=0)
     cached_input_per_million_usd: float | None = Field(default=None, ge=0)
+    cache_write_input_per_million_usd: float | None = Field(default=None, ge=0)
     output_per_million_usd: float = Field(ge=0)
     source_url: str
     source_label: str
@@ -40,6 +41,7 @@ class AttemptCost(BaseModel):
     currency: str = "USD"
     reference_input_cost_usd: float | None = None
     reference_cached_input_cost_usd: float | None = None
+    reference_cache_write_input_cost_usd: float | None = None
     reference_output_cost_usd: float | None = None
     reference_inference_cost_usd: float | None = None
     missing_dimensions: tuple[str, ...] = ()
