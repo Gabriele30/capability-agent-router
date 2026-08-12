@@ -448,6 +448,12 @@ def test_jsonl_missing_usage_is_unknown_and_malformed_output_fails_closed(git_re
         ).execute(_request(projected), CodexWriteAuthorization(authorized=True))
         assert partial.usage and partial.usage.input_tokens == 3
         assert partial.usage.output_tokens is None and partial.usage.total_tokens is None
+        invalid_dimension = _parse_jsonl_output(
+            _jsonl(usage={"input_tokens": True, "output_tokens": -1})
+        )
+        assert invalid_dimension and invalid_dimension[1]
+        assert invalid_dimension[1].input_tokens is None
+        assert invalid_dimension[1].output_tokens is None
         malformed = _runtime(
             manager,
             FakeRunner([_ready(), ControlledCodexProcessResult(exit_code=0, stdout="not-json")]),

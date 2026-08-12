@@ -396,7 +396,11 @@ def _usage_from_turn_completed(value: dict[str, object]) -> TokenUsage:
 
     def token(name: str) -> int | None:
         candidate = value.get(name)
-        return candidate if isinstance(candidate, int) and candidate >= 0 else None
+        return (
+            candidate
+            if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate >= 0
+            else None
+        )
 
     return TokenUsage(
         input_tokens=token("input_tokens"),
