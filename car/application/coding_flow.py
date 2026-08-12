@@ -61,6 +61,7 @@ class CodingFlowResult(BaseModel):
     succeeded: bool
     coding: CodingPipelineApplicationResult
     post_failure: PostFailurePipelineResult | None = None
+    controlled_write: object | None = None
     outcome: CodingFlowOutcome
     telemetry: ExecutionTelemetry | None = None
 
@@ -418,6 +419,7 @@ def _execute_direct_codex_controlled_write(
             attempted=controlled.attempted,
             succeeded=controlled.accepted,
             coding=coding,
+            controlled_write=controlled,
             outcome=(
                 CodingFlowOutcome.CODEX_CONTROLLED_WRITE_SUCCEEDED
                 if controlled.accepted

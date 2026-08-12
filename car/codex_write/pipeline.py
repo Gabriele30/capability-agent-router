@@ -166,6 +166,8 @@ class ControlledCodexWritePipeline:
                             changed_paths=application.changed_paths,
                             created_paths=application.created_paths,
                             modified_paths=application.modified_paths,
+                            task_changed_paths=validated.task_changed_paths,
+                            auxiliary_changed_paths=validated.auxiliary_changed_paths,
                             message=verification.message,
                         )
         finally:

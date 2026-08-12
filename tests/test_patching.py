@@ -145,6 +145,59 @@ def test_modify_must_be_selected(tmp_path: Path):
     )
 
 
+def test_task_and_safe_auxiliary_changes_are_validated_and_observable(tmp_path: Path):
+    (tmp_path / "double.py").write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text(".cache\n", encoding="utf-8")
+    changes = CodingProposal(
+        summary="Update code and ignore cache",
+        changes=[
+            ProposedFileChange(
+                path="double.py", operation=FileChangeOperation.MODIFY, patch=patch("double.py")
+            ),
+            ProposedFileChange(
+                path=".gitignore",
+                operation=FileChangeOperation.MODIFY,
+                patch=patch(".gitignore", old=".cache", new=".cache/"),
+            ),
+        ],
+    )
+
+    result = validate(tmp_path, changes, selected=("double.py",))
+
+    assert result.valid
+    assert result.task_changed_paths == ["double.py"]
+    assert result.auxiliary_changed_paths == [".gitignore"]
+
+
+def test_auxiliary_and_forbidden_modify_are_rejected_atomically(tmp_path: Path):
+    (tmp_path / "double.py").write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text(".cache\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("value = 1\n", encoding="utf-8")
+    changes = CodingProposal(
+        summary="Unsafe mixed set",
+        changes=[
+            ProposedFileChange(
+                path="double.py", operation=FileChangeOperation.MODIFY, patch=patch("double.py")
+            ),
+            ProposedFileChange(
+                path=".gitignore",
+                operation=FileChangeOperation.MODIFY,
+                patch=patch(".gitignore", old=".cache", new=".cache/"),
+            ),
+            ProposedFileChange(
+                path="tests/test_x.py",
+                operation=FileChangeOperation.MODIFY,
+                patch=patch("tests/test_x.py"),
+            ),
+        ],
+    )
+
+    assert_violation(
+        validate(tmp_path, changes, selected=("double.py",)), PatchViolationKind.UNAUTHORIZED_FILE
+    )
+
+
 def test_create_existing_and_modify_missing_targets_are_rejected(tmp_path: Path):
     (tmp_path / "car").mkdir()
     (tmp_path / "car" / "a.py").write_text("value = 1\n", encoding="utf-8")

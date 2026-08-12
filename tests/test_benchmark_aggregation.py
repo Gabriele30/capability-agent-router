@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.benchmark.aggregation import aggregate_benchmark
 from car.benchmark.models import BenchmarkRunMetadata, BenchmarkStrategy
 from car.benchmark.results import BenchmarkTaskResult
@@ -20,6 +21,10 @@ def _metadata(strategies=(BenchmarkStrategy.GEMINI_ONLY,)) -> BenchmarkRunMetada
         price_catalog_verified_on="2026-08-11",
         cost_basis="public_api_list_price",
     )
+
+
+def test_metadata_exposes_fixed_safe_auxiliary_policy():
+    assert _metadata().safe_auxiliary_paths == DEFAULT_SAFE_AUXILIARY_PATHS
 
 
 def _result(

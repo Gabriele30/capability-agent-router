@@ -160,6 +160,40 @@ def test_unauthorized_change_rejects_the_entire_delta_atomically(git_repository:
         assert projection.cleanup(projected).removed
 
 
+def test_task_and_auxiliary_delta_is_validated_with_separate_metadata(git_repository: Path):
+    baseline, projected, manager, projection, policy = _project(git_repository)
+    try:
+        (projected.workspace.path / "README.md").write_text("# task\n", encoding="utf-8")
+        (projected.workspace.path / ".gitignore").write_text(".cache/\n", encoding="utf-8")
+        result = _detect_and_validate(
+            git_repository, baseline, projected, manager, policy, ("README.md",)
+        )
+        assert result.valid
+        assert result.task_changed_paths == ["README.md"]
+        assert result.auxiliary_changed_paths == [".gitignore"]
+    finally:
+        assert projection.cleanup(projected).removed
+
+
+def test_auxiliary_plus_forbidden_delta_is_rejected_atomically(git_repository: Path):
+    baseline, projected, manager, projection, policy = _project(git_repository)
+    try:
+        (projected.workspace.path / ".gitignore").write_text(".cache/\n", encoding="utf-8")
+        (projected.workspace.path / "tests").mkdir()
+        (projected.workspace.path / "tests" / "test_x.py").write_text(
+            "value = 1\n", encoding="utf-8"
+        )
+        result = _detect_and_validate(
+            git_repository, baseline, projected, manager, policy, ("README.md",)
+        )
+        assert not result.valid
+        assert result.failure_kind == CodexWriteFailureKind.UNAUTHORIZED_CHANGE
+        assert result.validated_change_set is None
+        assert result.rejected_paths == ["tests/test_x.py"]
+    finally:
+        assert projection.cleanup(projected).removed
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected"),
     [

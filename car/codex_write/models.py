@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.coding.models import normalize_repository_relative_path
 from car.patching.models import PatchValidationPolicy
 
@@ -103,6 +104,7 @@ class CodexWritePolicy(_StrictModel):
     protected_prefixes: tuple[str, ...] = Field(
         default_factory=lambda: PatchValidationPolicy().protected_prefixes
     )
+    safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS
 
 
 class CodexFileIdentity(_StrictModel):
@@ -206,11 +208,13 @@ class CodexWorkspaceDeltaValidationResult(_StrictModel):
     validated_change_set: ValidatedCodexChangeSet | None = None
     failure_kind: CodexWriteFailureKind | None = None
     rejected_paths: list[str] = Field(default_factory=list)
+    task_changed_paths: list[str] = Field(default_factory=list)
+    auxiliary_changed_paths: list[str] = Field(default_factory=list)
     source_revalidated: bool = False
     workspace_integrity_valid: bool = False
     message: str
 
-    @field_validator("rejected_paths")
+    @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod
     def rejected_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
         return [normalize_repository_relative_path(value) for value in values]
@@ -316,9 +320,17 @@ class ControlledCodexWritePipelineResult(_StrictModel):
     changed_paths: list[str] = Field(default_factory=list)
     created_paths: list[str] = Field(default_factory=list)
     modified_paths: list[str] = Field(default_factory=list)
+    task_changed_paths: list[str] = Field(default_factory=list)
+    auxiliary_changed_paths: list[str] = Field(default_factory=list)
     message: str
 
-    @field_validator("changed_paths", "created_paths", "modified_paths")
+    @field_validator(
+        "changed_paths",
+        "created_paths",
+        "modified_paths",
+        "task_changed_paths",
+        "auxiliary_changed_paths",
+    )
     @classmethod
     def pipeline_paths_are_repository_relative(cls, values: list[str]) -> list[str]:
         return [normalize_repository_relative_path(value) for value in values]

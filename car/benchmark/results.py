@@ -25,8 +25,10 @@ class BenchmarkExecutionOutcome(BaseModel):
 
     telemetry: ExecutionTelemetry
     rejected_paths: tuple[str, ...] = ()
+    task_changed_paths: tuple[str, ...] = ()
+    auxiliary_changed_paths: tuple[str, ...] = ()
 
-    @field_validator("rejected_paths")
+    @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod
     def rejected_paths_are_repository_relative(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(normalize_repository_relative_path(value) for value in values)
@@ -46,8 +48,10 @@ class BenchmarkTaskResult(BaseModel):
     failure_kind: BenchmarkFailureKind | None = None
     failure_reason: str | None = None
     rejected_paths: tuple[str, ...] = ()
+    task_changed_paths: tuple[str, ...] = ()
+    auxiliary_changed_paths: tuple[str, ...] = ()
 
-    @field_validator("rejected_paths")
+    @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod
     def rejected_paths_are_repository_relative(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(normalize_repository_relative_path(value) for value in values)

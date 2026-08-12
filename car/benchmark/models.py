@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.coding.models import normalize_repository_relative_path
 
 
@@ -61,3 +62,4 @@ class BenchmarkRunMetadata(BaseModel):
     cost_basis: str
     gemini_model: str | None = None
     codex_model: str | None = None
+    safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS

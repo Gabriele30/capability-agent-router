@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from car.authorization import AuthorizedPathKind, classify_authorized_path
 from car.coding.models import (
     CodingExecutionPolicy,
     CodingProposal,
@@ -49,6 +50,8 @@ class PatchValidator:
 
         selected = {file.path for file in context.files}
         parsed_files: list[ParsedFilePatch] = []
+        task_changed_paths: list[str] = []
+        auxiliary_changed_paths: list[str] = []
         seen_paths: set[str] = set()
         for change in proposal.changes:
             patch_size = len(change.patch.encode("utf-8"))
@@ -82,7 +85,16 @@ class PatchValidator:
                     PatchViolationKind.PATCH_TOO_LARGE, parsed.path, "too many hunks"
                 )
             parsed_files.append(parsed)
-        return PatchValidationResult.accepted(parsed_files)
+            authorization = self._authorization(parsed.path, selected)
+            if authorization == AuthorizedPathKind.TASK or authorization is None:
+                task_changed_paths.append(parsed.path)
+            else:
+                auxiliary_changed_paths.append(parsed.path)
+        return PatchValidationResult.accepted(
+            parsed_files,
+            task_changed_paths=task_changed_paths,
+            auxiliary_changed_paths=auxiliary_changed_paths,
+        )
 
     def _validate_change(
         self,
@@ -136,7 +148,7 @@ class PatchValidator:
                 return self._reject(
                     PatchViolationKind.UNAUTHORIZED_FILE, target_path, "modify disabled"
                 )
-            if target_path not in selected:
+            if self._authorization(target_path, selected) is None:
                 return self._reject(
                     PatchViolationKind.UNAUTHORIZED_FILE, target_path, "file was not selected"
                 )
@@ -175,6 +187,13 @@ class PatchValidator:
         if first in self.policy.protected_prefixes:
             return True
         return any(component == ".env" or component.startswith(".env.") for component in components)
+
+    def _authorization(self, path: str, selected: set[str]) -> AuthorizedPathKind | None:
+        return classify_authorized_path(
+            path,
+            selected,
+            safe_auxiliary_paths=self.policy.safe_auxiliary_paths,
+        )
 
     @staticmethod
     def _is_within_root(root: Path, target: Path) -> bool:

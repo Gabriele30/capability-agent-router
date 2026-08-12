@@ -4,6 +4,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
+
 
 class ParsedPatchOperation(StrEnum):
     MODIFY = "modify"
@@ -106,6 +108,7 @@ class PatchValidationPolicy(BaseModel):
         "__pycache__",
         "htmlcov",
     )
+    safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS
 
 
 class ValidatedPatchSet(BaseModel):
@@ -116,10 +119,23 @@ class PatchValidationResult(BaseModel):
     valid: bool
     patch_set: ValidatedPatchSet | None = None
     violations: list[PatchViolation] = Field(default_factory=list)
+    task_changed_paths: list[str] = Field(default_factory=list)
+    auxiliary_changed_paths: list[str] = Field(default_factory=list)
 
     @classmethod
-    def accepted(cls, files: list[ParsedFilePatch]) -> "PatchValidationResult":
-        return cls(valid=True, patch_set=ValidatedPatchSet(files=files))
+    def accepted(
+        cls,
+        files: list[ParsedFilePatch],
+        *,
+        task_changed_paths: list[str],
+        auxiliary_changed_paths: list[str],
+    ) -> "PatchValidationResult":
+        return cls(
+            valid=True,
+            patch_set=ValidatedPatchSet(files=files),
+            task_changed_paths=task_changed_paths,
+            auxiliary_changed_paths=auxiliary_changed_paths,
+        )
 
     @classmethod
     def rejected(cls, violation: PatchViolation) -> "PatchValidationResult":

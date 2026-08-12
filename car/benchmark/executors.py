@@ -96,7 +96,11 @@ class CARBenchmarkExecutor:
                     FinalOutcome.VERIFIED_SUCCESS if result.succeeded else FinalOutcome.RESTORED
                 ),
                 verified_success=result.succeeded,
-            )
+            ),
+            task_changed_paths=_task_changed_paths(pipeline.patch_validation if pipeline else None),
+            auxiliary_changed_paths=_auxiliary_changed_paths(
+                pipeline.patch_validation if pipeline else None
+            ),
         )
 
     def _codex_only(self, context) -> BenchmarkExecutionOutcome:
@@ -143,6 +147,8 @@ class CARBenchmarkExecutor:
                 source_state=result.source_state,
             ),
             rejected_paths=_rejected_paths(result),
+            task_changed_paths=_task_changed_paths(getattr(result, "delta_result", None)),
+            auxiliary_changed_paths=_auxiliary_changed_paths(getattr(result, "delta_result", None)),
         )
 
     def _car(self, context) -> BenchmarkExecutionOutcome:
@@ -167,7 +173,24 @@ class CARBenchmarkExecutor:
         )
         if result.telemetry is None:
             raise RuntimeError("CAR application flow returned no telemetry")
-        return BenchmarkExecutionOutcome(telemetry=result.telemetry)
+        pipeline = result.coding.pipeline_result
+        controlled = result.controlled_write or (
+            result.post_failure.controlled_write if result.post_failure else None
+        )
+        delta = getattr(controlled, "delta_result", None)
+        return BenchmarkExecutionOutcome(
+            telemetry=result.telemetry,
+            task_changed_paths=(
+                _task_changed_paths(delta)
+                if delta is not None
+                else _task_changed_paths(pipeline.patch_validation if pipeline else None)
+            ),
+            auxiliary_changed_paths=(
+                _auxiliary_changed_paths(delta)
+                if delta is not None
+                else _auxiliary_changed_paths(pipeline.patch_validation if pipeline else None)
+            ),
+        )
 
 
 def _coding_verification(result) -> VerificationTelemetry | None:
@@ -206,6 +229,16 @@ def _rejected_paths(result) -> tuple[str, ...]:
     """Extract CAR-validated repository-relative rejection metadata only."""
     delta_result = getattr(result, "delta_result", None)
     paths = getattr(delta_result, "rejected_paths", ())
+    return tuple(paths) if isinstance(paths, list | tuple) else ()
+
+
+def _task_changed_paths(result) -> tuple[str, ...]:
+    paths = getattr(result, "task_changed_paths", ())
+    return tuple(paths) if isinstance(paths, list | tuple) else ()
+
+
+def _auxiliary_changed_paths(result) -> tuple[str, ...]:
+    paths = getattr(result, "auxiliary_changed_paths", ())
     return tuple(paths) if isinstance(paths, list | tuple) else ()
 
 

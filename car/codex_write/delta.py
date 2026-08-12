@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from car.authorization import AuthorizedPathKind, classify_authorized_path
 from car.coding.models import normalize_repository_relative_path
 
 from .baseline import SourceBaseline, SourceBaselineService
@@ -199,8 +200,9 @@ class CodexWorkspaceDeltaValidator:
                 source_revalidated=True,
                 workspace_integrity_valid=True,
             )
-        allowed = _authorized_paths(authorized_paths)
-        if allowed is None:
+        try:
+            task_authorized_paths = _authorized_paths(authorized_paths)
+        except ValueError:
             return _reject(
                 CodexWriteFailureKind.UNAUTHORIZED_CHANGE,
                 "authorization paths are invalid",
@@ -227,8 +229,10 @@ class CodexWorkspaceDeltaValidator:
                 True,
             )
         total_bytes = 0
+        task_changed_paths: list[str] = []
+        auxiliary_changed_paths: list[str] = []
         for delta in deltas:
-            failure = _validate_delta(delta, policy, allowed)
+            failure, authorization = _validate_delta(delta, policy, task_authorized_paths)
             if failure is not None:
                 return _reject(
                     failure,
@@ -238,6 +242,10 @@ class CodexWorkspaceDeltaValidator:
                     True,
                     True,
                 )
+            if authorization == AuthorizedPathKind.TASK:
+                task_changed_paths.append(delta.path)
+            else:
+                auxiliary_changed_paths.append(delta.path)
             if delta.after is not None:
                 total_bytes += delta.after.size_bytes
         if total_bytes > policy.max_projection_total_bytes:
@@ -260,6 +268,8 @@ class CodexWorkspaceDeltaValidator:
             ),
             source_revalidated=True,
             workspace_integrity_valid=True,
+            task_changed_paths=task_changed_paths,
+            auxiliary_changed_paths=auxiliary_changed_paths,
             message="isolated change set validated for future application",
         )
 
@@ -441,30 +451,35 @@ def _identity_changed(before: CodexFileIdentity, after: CodexFileIdentity) -> bo
 
 def _validate_delta(
     delta: CodexFileDelta, policy: CodexWritePolicy, authorized_paths: set[str]
-) -> CodexWriteFailureKind | None:
-    if delta.path not in authorized_paths:
-        return CodexWriteFailureKind.UNAUTHORIZED_CHANGE
+) -> tuple[CodexWriteFailureKind | None, AuthorizedPathKind | None]:
     if _protected(delta.path, policy):
-        return CodexWriteFailureKind.PROTECTED_PATH
+        return CodexWriteFailureKind.PROTECTED_PATH, None
+    authorization = classify_authorized_path(
+        delta.path,
+        authorized_paths,
+        safe_auxiliary_paths=policy.safe_auxiliary_paths,
+    )
+    if authorization is None:
+        return CodexWriteFailureKind.UNAUTHORIZED_CHANGE, None
     if delta.unsafe_symlink or (delta.after is not None and delta.after.is_symlink):
-        return CodexWriteFailureKind.SYMLINK_NOT_ALLOWED
+        return CodexWriteFailureKind.SYMLINK_NOT_ALLOWED, None
     if delta.operation == CodexChangeOperation.DELETE:
-        return CodexWriteFailureKind.DELETE_NOT_ALLOWED
+        return CodexWriteFailureKind.DELETE_NOT_ALLOWED, None
     if delta.operation == CodexChangeOperation.RENAME:
-        return CodexWriteFailureKind.RENAME_NOT_ALLOWED
+        return CodexWriteFailureKind.RENAME_NOT_ALLOWED, None
     if delta.operation not in {CodexChangeOperation.MODIFY, CodexChangeOperation.CREATE}:
-        return CodexWriteFailureKind.UNSUPPORTED_CHANGE
+        return CodexWriteFailureKind.UNSUPPORTED_CHANGE, None
     if delta.operation == CodexChangeOperation.MODIFY and not policy.allow_modify:
-        return CodexWriteFailureKind.UNSUPPORTED_CHANGE
+        return CodexWriteFailureKind.UNSUPPORTED_CHANGE, None
     if delta.operation == CodexChangeOperation.CREATE and not policy.allow_create:
-        return CodexWriteFailureKind.UNSUPPORTED_CHANGE
+        return CodexWriteFailureKind.UNSUPPORTED_CHANGE, None
     if delta.after is None:
-        return CodexWriteFailureKind.UNSUPPORTED_CHANGE
+        return CodexWriteFailureKind.UNSUPPORTED_CHANGE, None
     if delta.after.size_bytes > policy.max_file_bytes:
-        return CodexWriteFailureKind.FILE_TOO_LARGE
+        return CodexWriteFailureKind.FILE_TOO_LARGE, None
     if delta.after.is_binary and not policy.allow_binary:
-        return CodexWriteFailureKind.BINARY_NOT_ALLOWED
-    return None
+        return CodexWriteFailureKind.BINARY_NOT_ALLOWED, None
+    return None, authorization
 
 
 def _operation_counts(deltas: Iterable[CodexFileDelta]) -> dict[CodexChangeOperation, int]:
@@ -474,11 +489,8 @@ def _operation_counts(deltas: Iterable[CodexFileDelta]) -> dict[CodexChangeOpera
     return counts
 
 
-def _authorized_paths(paths: Iterable[str]) -> set[str] | None:
-    try:
-        return {normalize_repository_relative_path(path) for path in paths}
-    except ValueError:
-        return None
+def _authorized_paths(paths: Iterable[str]) -> set[str]:
+    return {normalize_repository_relative_path(path) for path in paths}
 
 
 def _protected(path: str, policy: CodexWritePolicy) -> bool:

@@ -69,10 +69,40 @@ class _Provider:
         )
 
 
+class _TaskAndAuxiliaryProvider(_Provider):
+    def propose(self, context):
+        self.calls += 1
+        before = context.files[0].content.rstrip()
+        return CodingProposal(
+            summary="synthetic task and auxiliary change",
+            changes=[
+                ProposedFileChange(
+                    path="target.py",
+                    operation=FileChangeOperation.MODIFY,
+                    patch=(
+                        "--- a/target.py\n+++ b/target.py\n@@ -1 +1 @@\n"
+                        f"-{before}\n+{self.replacement}\n"
+                    ),
+                ),
+                ProposedFileChange(
+                    path=".gitignore",
+                    operation=FileChangeOperation.MODIFY,
+                    patch=("--- a/.gitignore\n+++ b/.gitignore\n@@ -1 +1 @@\n-.cache\n+.cache/\n"),
+                ),
+            ],
+        )
+
+
 class _ControlledRuntime:
-    def __init__(self, replacement: str = "value = 2\n", usage: TokenUsage | None = None) -> None:
+    def __init__(
+        self,
+        replacement: str = "value = 2\n",
+        usage: TokenUsage | None = None,
+        auxiliary_path: str | None = None,
+    ) -> None:
         self.replacement = replacement
         self.usage = usage
+        self.auxiliary_path = auxiliary_path
         self.calls = 0
         self.models: list[str | None] = []
 
@@ -82,6 +112,10 @@ class _ControlledRuntime:
         (request.workspace.workspace.path / "target.py").write_text(
             self.replacement, encoding="utf-8"
         )
+        if self.auxiliary_path:
+            (request.workspace.workspace.path / self.auxiliary_path).write_text(
+                ".cache/\n", encoding="utf-8"
+            )
         return ControlledCodexWriteResult(
             attempted=True,
             process_succeeded=True,
@@ -287,6 +321,34 @@ def test_car_gemini_success_does_not_invoke_codex(tmp_path: Path):
         spaces.cleanup()
 
 
+def test_gemini_only_accepts_and_reports_safe_auxiliary_change(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    (fixture / ".gitignore").write_text(".cache\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore"], cwd=fixture, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=benchmark@example.invalid",
+            "-c",
+            "user.name=CAR Benchmark",
+            "commit",
+            "-m",
+            "add ignore",
+        ],
+        cwd=fixture,
+        check=True,
+        capture_output=True,
+    )
+    result = BenchmarkRunner(
+        _executor(_TaskAndAuxiliaryProvider("value = 2"), _ControlledRuntime())
+    ).run_case(_case(fixture), fixture, (BenchmarkStrategy.GEMINI_ONLY,))[0]
+
+    assert result.verified_success is True
+    assert result.task_changed_paths == ("target.py",)
+    assert result.auxiliary_changed_paths == (".gitignore",)
+
+
 def test_car_direct_codex_route_uses_one_controlled_attempt_without_gemini(tmp_path: Path):
     fixture = _fixture(tmp_path)
     spaces = BenchmarkWorkspaceSet(fixture)
@@ -405,6 +467,26 @@ def test_car_escalation_keeps_both_attempt_costs(tmp_path: Path):
     assert result.reference_cost is not None
     assert result.reference_cost.reference_inference_cost_usd is not None
     assert result.reference_cost.reference_inference_cost_usd > 0
+
+
+def test_codex_only_and_car_share_safe_auxiliary_authorization(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    runtime = _ControlledRuntime(auxiliary_path=".gitignore")
+    results = BenchmarkRunner(
+        CARBenchmarkExecutor(
+            BenchmarkExecutionDependencies(
+                coding_provider=_Provider("value = ("),
+                codex_runtime=_ReadOnlyRuntime(),
+                controlled_pipeline=ControlledCodexWritePipeline(runtime=runtime),
+                codex_write_policy=CodexWritePolicy(enabled=True),
+            )
+        )
+    ).run_case(_case(fixture), fixture, (BenchmarkStrategy.CODEX_ONLY, BenchmarkStrategy.CAR))
+
+    assert [result.verified_success for result in results] == [True, True]
+    assert all(result.task_changed_paths == ("target.py",) for result in results)
+    assert all(result.auxiliary_changed_paths == (".gitignore",) for result in results)
+    assert runtime.calls == 2
 
 
 def test_gemini_usage_and_model_propagate_to_benchmark_telemetry(tmp_path: Path):
