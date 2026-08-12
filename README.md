@@ -56,6 +56,9 @@ car init
 car status
 car analyze "Fix parser regression"
 car providers
+
+# Explicitly run isolated benchmark strategies from a local manifest.
+car benchmark .\benchmarks\manifest.json --all --json-out .\benchmark-result.json
 ```
 
 ## Examples

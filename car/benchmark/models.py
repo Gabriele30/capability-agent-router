@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -49,7 +50,12 @@ class BenchmarkManifest(BaseModel):
 
 
 class BenchmarkRunMetadata(BaseModel):
+    schema_version: int = 1
     run_id: str
     manifest_hash: str
     car_version: str
+    started_at: datetime
     strategies: tuple[BenchmarkStrategy, ...]
+    price_catalog_version: str
+    price_catalog_verified_on: str
+    cost_basis: str

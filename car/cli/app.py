@@ -23,9 +23,15 @@ from car.application.execution_gateway import (
     CodingFlowGateway,
 )
 from car.application.routing import build_gemini_provider, evaluate_analysis
+from car.benchmark.executors import BenchmarkExecutionDependencies, CARBenchmarkExecutor
+from car.benchmark.manifest import load_manifest
+from car.benchmark.models import BenchmarkStrategy
+from car.benchmark.presentation import render_benchmark_report
+from car.benchmark.runner import BenchmarkRunner
+from car.benchmark.service import run_manifest_benchmark
 from car.cli.presentation import present_execution_result
 from car.codex.runtime import LocalCodexRuntime
-from car.codex_write.models import CodexWriteAuthorization
+from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
 from car.coding.gemini import GeminiCodingProvider
 from car.coding.models import (
     CodingFileContext,
@@ -59,6 +65,17 @@ def _build_coding_provider(config: CarConfig) -> GeminiCodingProvider:
 def _build_codex_runtime() -> LocalCodexRuntime:
     """Construct the existing read-only runtime only for opted-in analysis."""
     return LocalCodexRuntime()
+
+
+def _build_benchmark_executor(config: CarConfig) -> CARBenchmarkExecutor:
+    """Construct live-capable adapters only after the benchmark command is invoked."""
+    return CARBenchmarkExecutor(
+        BenchmarkExecutionDependencies(
+            coding_provider=_build_coding_provider(config),
+            codex_runtime=_build_codex_runtime(),
+            codex_write_policy=CodexWritePolicy(enabled=True),
+        )
+    )
 
 
 def _context_paths(root: Path) -> tuple[Path, Path, Path]:
@@ -759,6 +776,64 @@ def providers(
     console.print("\n[bold]Codex[/]")
     console.print("Execution:      not implemented")
     console.print("Authentication: external/local Codex runtime")
+
+
+def _parse_benchmark_strategies(
+    strategy: str | None, all_strategies: bool
+) -> tuple[BenchmarkStrategy, ...]:
+    if strategy and all_strategies:
+        raise typer.BadParameter("Use either --strategy or --all, not both.")
+    if all_strategies:
+        return tuple(BenchmarkStrategy)
+    if strategy is None:
+        raise typer.BadParameter("Select a strategy with --strategy or explicitly use --all.")
+    try:
+        return (BenchmarkStrategy(strategy.replace("-", "_")),)
+    except ValueError as error:
+        valid = ", ".join(value.value.replace("_", "-") for value in BenchmarkStrategy)
+        raise typer.BadParameter(f"Strategy must be one of: {valid}.") from error
+
+
+@app.command(name="benchmark")
+def benchmark(
+    manifest_path: Annotated[Path, typer.Argument(help="Local benchmark manifest JSON file.")],
+    strategy: Annotated[
+        str | None, typer.Option("--strategy", help="Run gemini-only, codex-only, or car.")
+    ] = None,
+    all_strategies: Annotated[
+        bool, typer.Option("--all", help="Run all three benchmark strategies.")
+    ] = False,
+    json_out: Annotated[
+        Path | None, typer.Option("--json-out", help="Write privacy-safe benchmark JSON.")
+    ] = None,
+) -> None:
+    """Run selected live benchmark strategies over isolated local fixtures."""
+    try:
+        manifest = load_manifest(manifest_path)
+        strategies = _parse_benchmark_strategies(strategy, all_strategies)
+    except (ValueError, typer.BadParameter) as error:
+        console.print(f"[red]Error:[/] {error}")
+        raise typer.Exit(code=2) from error
+    repository = _scan_or_exit()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    _title()
+    console.print(
+        "Selected benchmark strategies may invoke configured Gemini and local Codex providers."
+    )
+    try:
+        report = run_manifest_benchmark(
+            manifest,
+            manifest_path.resolve(),
+            strategies,
+            BenchmarkRunner(_build_benchmark_executor(config)),
+        )
+        if json_out:
+            json_out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    except (OSError, ValueError) as error:
+        console.print(f"[red]Error:[/] Benchmark failed: {error}")
+        raise typer.Exit(code=1) from error
+    render_benchmark_report(report, console)
 
 
 def main() -> None:

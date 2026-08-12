@@ -7,6 +7,11 @@ from car.benchmark.models import BenchmarkCase, BenchmarkManifest, BenchmarkStra
 from car.benchmark.workspace import BenchmarkWorkspaceSet
 
 if TYPE_CHECKING:
+    from car.benchmark.aggregation import (
+        BenchmarkComparison,
+        BenchmarkReport,
+        BenchmarkStrategySummary,
+    )
     from car.benchmark.executors import (
         BenchmarkExecutionDependencies,
         CARBenchmarkExecutor,
@@ -16,11 +21,14 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BenchmarkCase",
+    "BenchmarkComparison",
     "BenchmarkExecutionDependencies",
     "BenchmarkManifest",
     "BenchmarkStrategy",
     "BenchmarkWorkspaceSet",
     "BenchmarkRunner",
+    "BenchmarkReport",
+    "BenchmarkStrategySummary",
     "BenchmarkTaskResult",
     "CARBenchmarkExecutor",
     "load_manifest",
@@ -39,6 +47,18 @@ def __getattr__(name: str) -> Any:
         return {
             "BenchmarkExecutionDependencies": BenchmarkExecutionDependencies,
             "CARBenchmarkExecutor": CARBenchmarkExecutor,
+        }[name]
+    if name in {"BenchmarkComparison", "BenchmarkReport", "BenchmarkStrategySummary"}:
+        from car.benchmark.aggregation import (
+            BenchmarkComparison,
+            BenchmarkReport,
+            BenchmarkStrategySummary,
+        )
+
+        return {
+            "BenchmarkComparison": BenchmarkComparison,
+            "BenchmarkReport": BenchmarkReport,
+            "BenchmarkStrategySummary": BenchmarkStrategySummary,
         }[name]
     if name == "BenchmarkTaskResult":
         from car.benchmark.results import BenchmarkTaskResult

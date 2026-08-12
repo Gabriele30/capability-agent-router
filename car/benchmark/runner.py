@@ -28,13 +28,19 @@ class BenchmarkRunner:
         self._executor = executor
         self._costs = ReferenceCostCalculator()
 
-    def run_case(self, case: BenchmarkCase, fixture: Path) -> tuple[BenchmarkTaskResult, ...]:
+    def run_case(
+        self,
+        case: BenchmarkCase,
+        fixture: Path,
+        strategies: tuple[BenchmarkStrategy, ...] = tuple(BenchmarkStrategy),
+    ) -> tuple[BenchmarkTaskResult, ...]:
+        if not strategies:
+            raise ValueError("at least one benchmark strategy is required")
         source_identity = BenchmarkWorkspaceSet.identity(fixture)
         spaces = BenchmarkWorkspaceSet(fixture)
         try:
             results = tuple(
-                self._run(case, strategy, spaces.workspaces[strategy])
-                for strategy in BenchmarkStrategy
+                self._run(case, strategy, spaces.workspaces[strategy]) for strategy in strategies
             )
             if BenchmarkWorkspaceSet.identity(fixture) != source_identity:
                 raise RuntimeError("benchmark source fixture changed during execution")
