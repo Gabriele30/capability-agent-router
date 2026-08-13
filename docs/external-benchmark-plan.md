@@ -11,6 +11,22 @@ Codex reasoning effort `medium`.
 The result must report reference API-equivalent inference cost, never actual
 provider billing. No provider is invoked as part of this plan.
 
+## Implementation status
+
+The benchmark-side SWE-bench Verified adapter is now implemented without a CAR
+runtime change. Its tracked identity is
+[`benchmark_specs/swebench-verified-v1.json`](../benchmark_specs/swebench-verified-v1.json):
+it pins dataset revision `03e151cf5560b1af6a4363c6a9d766deaaea6b56`,
+official harness revision `c7fd5abffe0b2086a8bb9389d23c47d930ef571f`, and
+the ordered 24-instance sample identity
+`9a0f50548c1c1747878ea340ff9d2da5060662742a01eeb5edcf70d69230a06c`.
+
+The adapter has no provider construction or execution path. It has deterministic
+selection, a provider-safe projection, base-commit and clean-checkout validation,
+tracked-file scope derivation, evaluator result mapping, and a non-mutating Docker
+preflight. The Docker evaluator smoke remains contingent on a separately prepared
+official harness/image cache.
+
 ## Candidate datasets
 
 - **SWE-bench Verified.** The SWE-bench maintainers publish this 500-instance,
