@@ -248,7 +248,7 @@ before forwarding bounded structured evidence to the existing ephemeral read-onl
 Codex diagnostic runtime. A successful Codex diagnosis remains unresolved at the
 top level and cannot alter the workspace. Current Gemini transports require
 `google-genai>=2.0.0,<3`; model selection remains local configuration (for example,
-`gemini-3.6-flash`) rather than router policy.
+`gemini-3.5-flash-lite`) rather than router policy.
 
 Both 5D2-C1 and 5D2-C2 have been live verified with synthetic repositories. C1
 validated a real Gemini proposal through safe apply and passing pytest verification.

@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from car.benchmark.models import BenchmarkStrategy
 from car.cli.app import app
+from car.config.models import CarConfig
 from car.telemetry import AttemptCapability, ExecutionTelemetryCollector, FinalOutcome, TokenUsage
 from car.telemetry.models import UsageSource
 
@@ -30,7 +31,7 @@ class _OfflineExecutor:
         sequence = collector.start_attempt(
             capability,
             provider="gemini" if capability == AttemptCapability.GEMINI else "codex",
-            model="gemini-3.6-flash" if capability == AttemptCapability.GEMINI else None,
+            model="gemini-3.5-flash-lite" if capability == AttemptCapability.GEMINI else None,
         )
         usage = (
             TokenUsage(
@@ -114,6 +115,14 @@ def test_benchmark_cli_all_and_json_export_are_offline(
 
     monkeypatch.setattr(cli, "_build_benchmark_executor", build)
     monkeypatch.chdir(git_repository)
+    context = git_repository / ".car-context"
+    context.mkdir()
+    (context / "config.json").write_text(
+        CarConfig(
+            providers={"gemini": {"enabled": True, "model": "gemini-3.5-flash-lite"}}
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
     output = tmp_path / "result.json"
 
     result = runner.invoke(
@@ -140,6 +149,7 @@ def test_benchmark_cli_all_and_json_export_are_offline(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["metadata"]["manifest_hash"]
     assert payload["metadata"]["strategies"] == [item.value for item in BenchmarkStrategy]
+    assert payload["metadata"]["gemini_model"] == "gemini-3.5-flash-lite"
     assert payload["metadata"]["codex_model"] == "gpt-5.6-terra"
     assert payload["metadata"]["codex_reasoning_effort"] == "medium"
     assert received["codex_model"] == "gpt-5.6-terra"

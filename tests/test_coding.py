@@ -98,12 +98,12 @@ def test_valid_proposal_is_returned_once_without_workspace_mutation(git_reposito
 
 
 def test_configured_provider_model_is_preserved_in_attempt_result():
-    provider = FakeCodingProvider(model="gemini-3.6-flash")
+    provider = FakeCodingProvider(model="gemini-3.5-flash-lite")
 
     result = attempt_coding(make_context(), provider)
 
     assert result.succeeded is True
-    assert result.model == "gemini-3.6-flash"
+    assert result.model == "gemini-3.5-flash-lite"
 
 
 @pytest.mark.parametrize(

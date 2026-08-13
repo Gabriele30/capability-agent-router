@@ -104,7 +104,7 @@ $env:GEMINI_API_KEY="<your-key>"
 ```
 
 For current Gemini coding transports, use a configured model such as
-`gemini-3.6-flash`; the model remains a local configuration choice and is never
+`gemini-3.5-flash-lite`; the model remains a local configuration choice and is never
 hardcoded by the router.
 
 CAR never persists the API key value. `car providers` reports local-only status:

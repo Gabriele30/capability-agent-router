@@ -460,7 +460,7 @@ def test_gemini_only_accepts_and_reports_safe_auxiliary_change(tmp_path: Path):
 def test_car_direct_codex_route_uses_one_controlled_attempt_without_gemini(tmp_path: Path):
     fixture = _fixture(tmp_path)
     spaces = BenchmarkWorkspaceSet(fixture)
-    provider = _Provider("value = 2", model="gemini-3.6-flash")
+    provider = _Provider("value = 2", model="gemini-3.5-flash-lite")
     runtime = _ControlledRuntime()
     try:
         telemetry = CARBenchmarkExecutor(
@@ -555,7 +555,7 @@ def test_car_escalation_keeps_both_attempt_costs(tmp_path: Path):
         CARBenchmarkExecutor(
             BenchmarkExecutionDependencies(
                 coding_provider=_Provider(
-                    "value = (", model="gemini-3.6-flash", usage=gemini_usage
+                    "value = (", model="gemini-3.5-flash-lite", usage=gemini_usage
                 ),
                 codex_runtime=_ReadOnlyRuntime(),
                 controlled_pipeline=ControlledCodexWritePipeline(
@@ -607,7 +607,7 @@ def test_gemini_usage_and_model_propagate_to_benchmark_telemetry(tmp_path: Path)
         total_tokens=16,
         source=UsageSource.PROVIDER_REPORTED,
     )
-    provider = _Provider("value = 2", model="gemini-3.6-flash", usage=usage)
+    provider = _Provider("value = 2", model="gemini-3.5-flash-lite", usage=usage)
     spaces = BenchmarkWorkspaceSet(fixture)
     try:
         executor = _executor(provider, _ControlledRuntime())
@@ -623,7 +623,7 @@ def test_gemini_usage_and_model_propagate_to_benchmark_telemetry(tmp_path: Path)
         )
         for telemetry in (gemini, car):
             attempt = telemetry.attempts[0]
-            assert attempt.model == "gemini-3.6-flash"
+            assert attempt.model == "gemini-3.5-flash-lite"
             assert attempt.usage == usage
         assert provider.calls == 2
     finally:

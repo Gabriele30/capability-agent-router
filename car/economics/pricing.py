@@ -8,10 +8,9 @@ DEFAULT_PRICE_CATALOG = ReferencePriceCatalog(
     prices=(
         ModelPrice(
             provider="gemini",
-            model="gemini-3.6-flash",
-            input_per_million_usd=1.5,
-            cached_input_per_million_usd=0.15,
-            output_per_million_usd=7.5,
+            model="gemini-3.5-flash-lite",
+            input_per_million_usd=0.3,
+            output_per_million_usd=2.5,
             source_url="https://ai.google.dev/gemini-api/docs/pricing",
             source_label="Google Gemini Developer API Paid Tier Standard",
             verified_on=date(2026, 8, 11),
@@ -62,6 +61,8 @@ class ReferenceCostCalculator:
         cache_write = usage.cache_write_input_tokens or 0
         if cached + cache_write > usage.input_tokens:
             return AttemptCost(complete=False, missing_dimensions=("consistent_input_breakdown",))
+        if cached and price.cached_input_per_million_usd is None:
+            return AttemptCost(complete=False, missing_dimensions=("cached_input_tokens",))
         if cache_write and price.cache_write_input_per_million_usd is None:
             return AttemptCost(complete=False, missing_dimensions=("cache_write_input_tokens",))
         input_rate, output_rate = price.input_per_million_usd, price.output_per_million_usd
