@@ -9,7 +9,7 @@ import pytest
 
 from car.authorization import classify_authorized_path
 from car.benchmark.context import build_execution_context
-from car.benchmark.hidden_oracle import HIDDEN_ORACLE_IDS
+from car.benchmark.hidden_oracle import HIDDEN_ORACLE_IDS, run
 from car.benchmark.models import BenchmarkCase, BenchmarkStrategy
 from car.coding.models import (
     CodingFileContext,
@@ -178,3 +178,26 @@ def test_hidden_oracle_plan_satisfies_the_existing_safe_verification_contract(tm
         ),
         fixture.resolve(),
     )
+
+
+def test_hidden_oracle_registry_contains_all_twenty_cases_and_fails_closed():
+    assert len(HIDDEN_ORACLE_IDS) == 20
+    assert {
+        "slug-normalization",
+        "retry-delay-cap",
+        "bounded-percentage",
+        "chunk-boundaries",
+        "inclusive-date-overlap",
+        "deduplicate-preserve-order",
+        "shipping-after-discount",
+        "inventory-reservation",
+        "permission-inheritance",
+        "cache-expiration",
+        "configuration-precedence",
+        "event-deduplication",
+        "atomic-account-transfer",
+        "dependency-order",
+        "ttl-lru-cache",
+    }.issubset(HIDDEN_ORACLE_IDS)
+    with pytest.raises(ValueError, match="unsupported hidden benchmark oracle"):
+        run("not-an-oracle")
