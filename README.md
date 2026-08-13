@@ -20,6 +20,13 @@ and rollback. After a verified Gemini failure, an explicitly authorized and
 strictly scoped controlled Codex write may be selected; its public live
 validation remains opt-in.
 
+## Benchmark pilot
+
+On the current internal 20-task pilot repeated three times, CAR maintained a
+similar verified success rate to Codex-only while reducing reference
+API-equivalent cost per verified success by about 38%. See the
+[methodology and limitations](docs/benchmark-pilot-20.md).
+
 ## Routing architecture
 
 ```text
