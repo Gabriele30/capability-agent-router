@@ -43,7 +43,7 @@ def build_execution_context(
         if target.is_symlink() or not target.is_file():
             raise ValueError(f"benchmark path is not a regular file: {relative}")
         files.append(CodingFileContext(path=relative, content=target.read_text(encoding="utf-8")))
-    verification = _verification_plan(root, case.verification, case.authorized_paths)
+    verification = _verification_plan(root, case)
     coding = CodingTaskContext(
         task=case.task,
         route=routing.final_decision.route,
@@ -67,13 +67,27 @@ def build_execution_context(
     )
 
 
-def _verification_plan(
-    root: Path, checks: tuple[str, ...], paths: tuple[str, ...]
-) -> VerificationPlan:
+def _verification_plan(root: Path, case: BenchmarkCase) -> VerificationPlan:
+    if case.hidden_verification is not None:
+        return VerificationPlan(
+            commands=[
+                CommandSpec(
+                    args=[
+                        "python",
+                        "-B",
+                        "-m",
+                        "car.benchmark.hidden_oracle",
+                        case.hidden_verification,
+                    ],
+                    cwd=str(root),
+                    timeout_seconds=60,
+                )
+            ]
+        )
     commands: list[CommandSpec] = []
-    for check in checks:
+    for check in case.verification:
         if check == "ruff":
-            args = ["ruff", "check", *paths]
+            args = ["ruff", "check", *case.authorized_paths]
         elif check == "pytest":
             args = ["python", "-m", "pytest"]
         else:
