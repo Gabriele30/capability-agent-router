@@ -102,10 +102,12 @@ def _parse_hunks(lines: list[str]) -> list[ParsedHunk]:
             position += 1
         if not hunk_lines:
             raise PatchParseError(PatchViolationKind.HUNK_INVALID, "empty hunk")
-        old_actual = sum(line.prefix in {" ", "-"} for line in hunk_lines)
-        new_actual = sum(line.prefix in {" ", "+"} for line in hunk_lines)
-        if old_actual != old_count or new_actual != new_count:
-            raise PatchParseError(PatchViolationKind.HUNK_COUNT_MISMATCH, "hunk line counts")
+        # Provider-authored headers sometimes contain stale line counts.  The body
+        # is the sole deterministic source for those counts: it is already fully
+        # parsed here and every line has an unambiguous unified-diff prefix.
+        # Start locations and all patch content remain provider supplied and are
+        # still checked strictly by the validator and applier.
+        old_count, new_count = _canonical_hunk_counts(hunk_lines)
         hunks.append(
             ParsedHunk(
                 old_start=old_start,
@@ -119,6 +121,14 @@ def _parse_hunks(lines: list[str]) -> list[ParsedHunk]:
         raise PatchParseError(PatchViolationKind.HUNK_INVALID, "patch has no hunks")
     _reject_overlapping_hunks(hunks)
     return hunks
+
+
+def _canonical_hunk_counts(lines: list[ParsedHunkLine]) -> tuple[int, int]:
+    """Derive the only repairable hunk metadata from an unambiguous body."""
+    return (
+        sum(line.prefix in {" ", "-"} for line in lines),
+        sum(line.prefix in {" ", "+"} for line in lines),
+    )
 
 
 def _reject_overlapping_hunks(hunks: list[ParsedHunk]) -> None:

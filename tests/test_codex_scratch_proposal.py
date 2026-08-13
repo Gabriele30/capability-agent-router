@@ -153,6 +153,29 @@ def test_scratch_delta_is_discarded_and_only_final_proposal_reaches_source(git_r
     assert verification.calls == 1
 
 
+def test_final_proposal_canonicalizes_hunk_counts_before_strict_application(git_repository: Path):
+    runtime = _ScratchRuntime(
+        _proposal(
+            [
+                {
+                    "path": "README.md",
+                    "operation": "modify",
+                    "patch": (
+                        "--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,2 @@\n"
+                        "-# Test\n+# Canonicalized\n"
+                    ),
+                }
+            ]
+        ),
+        {},
+    )
+
+    result = _execute(git_repository, runtime)
+
+    assert result.accepted
+    assert (git_repository / "README.md").read_text(encoding="utf-8") == "# Canonicalized\n"
+
+
 def test_missing_or_malformed_final_proposal_fails_closed_and_keeps_usage(git_repository: Path):
     for message in (None, "not a JSON proposal"):
         runtime = _ScratchRuntime(message, {"README.md": b"# Scratch only\n"})
