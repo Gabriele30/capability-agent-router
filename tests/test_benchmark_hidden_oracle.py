@@ -18,6 +18,8 @@ from car.coding.models import (
     FileChangeOperation,
     ProposedFileChange,
 )
+from car.coding.verification import CodingVerificationCoordinator
+from car.execution.models import CommandSpec
 from car.patching.validation import PatchValidator
 from car.providers.models import RepositoryClassificationContext
 from car.router.models import Route
@@ -158,3 +160,21 @@ def test_all_strategies_share_the_same_hidden_oracle_and_authorization(tmp_path:
     assert context.case.authorized_paths == ("double.py", "tests/test_double.py")
     assert context.verification.commands[0].args[-1] == "double-value"
     assert "tests/test_double.py" in {file.path for file in context.coding.files}
+
+
+def test_hidden_oracle_plan_satisfies_the_existing_safe_verification_contract(tmp_path: Path):
+    fixture = _git_fixture(tmp_path)
+    plan = build_execution_context(
+        _case(fixture), fixture, BenchmarkStrategy.CODEX_ONLY
+    ).verification
+
+    assert plan.commands
+    assert CodingVerificationCoordinator._is_safe_command(plan.commands[0], fixture.resolve())
+    assert not CodingVerificationCoordinator._is_safe_command(
+        CommandSpec(
+            args=["python", "-B", "-m", "car.benchmark.hidden_oracle", "double-value", "extra"],
+            cwd=str(fixture),
+            timeout_seconds=60,
+        ),
+        fixture.resolve(),
+    )

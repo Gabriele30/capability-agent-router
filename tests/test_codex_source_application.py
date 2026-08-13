@@ -89,6 +89,14 @@ def _command(root: Path) -> CommandSpec:
     return CommandSpec(args=["python", "-m", "pytest"], cwd=str(root), timeout_seconds=10)
 
 
+def _hidden_oracle_command(root: Path) -> CommandSpec:
+    return CommandSpec(
+        args=["python", "-B", "-m", "car.benchmark.hidden_oracle", "double-value"],
+        cwd=str(root),
+        timeout_seconds=10,
+    )
+
+
 def _verification(root: Path, status: VerificationStatus, *, timeout: bool = False):
     return VerificationResult(
         status=status,
@@ -442,6 +450,39 @@ def test_b2_failure_timeout_and_empty_plan_rollback(git_repository: Path):
         assert (git_repository / "README.md").read_bytes() == original
     finally:
         assert projection.cleanup(projected).removed
+
+
+def test_hidden_oracle_plan_uses_existing_finalization_contract(git_repository: Path):
+    original = (git_repository / "README.md").read_bytes()
+    for status, accepted in (
+        (VerificationStatus.PASSED, True),
+        (VerificationStatus.FAILED, False),
+    ):
+        baseline, projected, manager, projection, policy, validated, detector = _prepared(
+            git_repository, "README.md", b"Codex hidden oracle\n"
+        )
+        try:
+            _, transaction = CodexSourceApplicationService(detector).apply(
+                git_repository, projected, validated, baseline, policy
+            )
+            assert transaction is not None
+            result = CodexSourceVerificationCoordinator(
+                _VerificationEngine(_verification(git_repository, status))
+            ).verify_and_finalize(
+                transaction,
+                VerificationPlan(commands=[_hidden_oracle_command(git_repository)]),
+                git_repository,
+                policy,
+            )
+            assert result.accepted is accepted
+            assert result.failure_kind != CodexWriteFailureKind.VERIFICATION_REQUIRED
+            assert (git_repository / "README.md").read_bytes() == (
+                b"Codex hidden oracle\n" if accepted else original
+            )
+            if accepted:
+                (git_repository / "README.md").write_bytes(original)
+        finally:
+            assert projection.cleanup(projected).removed
 
 
 def test_b2_post_verification_mutation_is_not_accepted(git_repository: Path):

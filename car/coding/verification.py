@@ -129,6 +129,8 @@ class CodingVerificationCoordinator:
             )
         if executable == "pytest":
             return True
+        if command.args[:4] == ["python", "-B", "-m", "car.benchmark.hidden_oracle"]:
+            return len(command.args) == 5
         return command.args[:3] == ["python", "-m", "pytest"]
 
     @staticmethod
