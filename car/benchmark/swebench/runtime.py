@@ -9,7 +9,9 @@ application, verification, and telemetry controls.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -101,7 +103,19 @@ class SWEbenchWorkspace:
 
     def cleanup(self) -> None:
         if self.root.exists():
-            shutil.rmtree(self.root)
+            shutil.rmtree(self.root, onexc=self._make_writable_and_retry)
+
+    def _make_writable_and_retry(self, function, path, error) -> None:
+        """Retry only a permission failure under this CAR-owned temporary root."""
+        target = Path(path).resolve()
+        try:
+            target.relative_to(self.root.resolve())
+        except ValueError:
+            raise error from None
+        if not isinstance(error, PermissionError):
+            raise error from None
+        os.chmod(target, stat.S_IWRITE)
+        function(path)
 
 
 def run_swebench_instance(

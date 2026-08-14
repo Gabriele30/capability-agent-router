@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from car.benchmark.models import BenchmarkStrategy
+from car.benchmark.context import build_execution_context
+from car.benchmark.models import BenchmarkCase, BenchmarkStrategy
 from car.benchmark.swebench.evaluator import (
     SWEbenchEvaluationRequest,
     SWEbenchEvaluationStatus,
@@ -97,6 +98,42 @@ def test_wsl_translation_and_native_report_parsing_are_fail_closed(tmp_path: Pat
         parse_native_report(request, tmp_path).status
         == SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE
     )
+
+
+def test_binary_and_non_utf8_files_are_authorized_but_not_provider_context(tmp_path: Path) -> None:
+    instance = _repository(tmp_path)
+    (tmp_path / "asset.bin").write_bytes(b"\x00RAW_BINARY_SENTINEL")
+    (tmp_path / "legacy.dat").write_bytes(b"\xff\xfe")
+    _git(tmp_path, "add", "asset.bin", "legacy.dat")
+    _git(tmp_path, "commit", "-m", "binary files")
+    case = BenchmarkCase(
+        id=instance.instance_id,
+        category="test",
+        task="Read only public files",
+        fixture="fixture",
+        authorized_paths=("module.py", "asset.bin", "legacy.dat"),
+        verification=("pytest",),
+    )
+
+    context = build_execution_context(case, tmp_path, BenchmarkStrategy.GEMINI_ONLY)
+
+    assert case.authorized_paths == ("module.py", "asset.bin", "legacy.dat")
+    assert [item.path for item in context.coding.files] == ["module.py"]
+    assert "RAW_BINARY_SENTINEL" not in context.coding.model_dump_json()
+
+
+def test_swebench_workspace_cleanup_retries_read_only_owned_file(tmp_path: Path) -> None:
+    from car.benchmark.swebench.runtime import SWEbenchWorkspace
+
+    workspace = SWEbenchWorkspace(_repository(tmp_path))
+    packed = workspace.root / ".git" / "objects" / "pack" / "file.idx"
+    packed.parent.mkdir(parents=True)
+    packed.write_text("owned", encoding="utf-8")
+    packed.chmod(0o444)
+
+    workspace.cleanup()
+
+    assert not workspace.root.exists()
 
 
 def _repository(path: Path) -> SWEbenchInstance:

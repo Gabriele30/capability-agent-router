@@ -42,7 +42,9 @@ def build_execution_context(
         target.relative_to(root)
         if target.is_symlink() or not target.is_file():
             raise ValueError(f"benchmark path is not a regular file: {relative}")
-        files.append(CodingFileContext(path=relative, content=target.read_text(encoding="utf-8")))
+        text = _read_provider_text(target)
+        if text is not None:
+            files.append(CodingFileContext(path=relative, content=text))
     verification = _verification_plan(root, case)
     coding = CodingTaskContext(
         task=case.task,
@@ -65,6 +67,17 @@ def build_execution_context(
         coding=coding,
         verification=verification,
     )
+
+
+def _read_provider_text(path: Path) -> str | None:
+    """Return strict UTF-8 text only; authorization remains independent."""
+    content = path.read_bytes()
+    if b"\x00" in content:
+        return None
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def _verification_plan(root: Path, case: BenchmarkCase) -> VerificationPlan:
