@@ -10,6 +10,7 @@ import pytest
 from car.benchmark.models import BenchmarkStrategy
 from car.benchmark.results import BenchmarkFailureKind
 from car.benchmark.swebench.evaluator import (
+    QUALIFIED_INTERPRETER_RELATIVE,
     QUALIFIED_SWEBENCH_VERSION,
     QUALIFIED_WSL_DISTRIBUTION,
     SWEbenchEvaluationRequest,
@@ -287,7 +288,7 @@ def test_qualified_wsl_evaluator_command_contains_no_gold_data(tmp_path: Path) -
         "-d",
         QUALIFIED_WSL_DISTRIBUTION,
         "--",
-        "python3",
+        QUALIFIED_INTERPRETER_RELATIVE,
         "-m",
         "swebench.harness.run_evaluation",
     )
@@ -307,6 +308,8 @@ def test_qualified_preflight_is_injected_and_does_not_change_the_host(
     )
 
     def runner(args: list[str]) -> tuple[int, str, str]:
+        if args[-2:] == ["-lc", 'printf %s "$HOME"']:
+            return 0, "/home/tester", ""
         if args[-2:] == ["uname", "-s"]:
             return 0, "Linux\n", ""
         if args[-2:] == ["uname", "-m"]:
@@ -344,7 +347,13 @@ def test_preflight_fails_closed_for_windows_or_old_contract(tmp_path: Path, monk
         dataset_revision="03e151cf5560b1af6a4363c6a9d766deaaea6b56",
     )
 
-    result = check_preflight(tmp_path, request=request, command_runner=lambda _: (1, "", ""))
+    result = check_preflight(
+        tmp_path,
+        request=request,
+        command_runner=lambda args: (
+            (0, "/home/tester", "") if args[-2:] == ["-lc", 'printf %s "$HOME"'] else (1, "", "")
+        ),
+    )
 
     assert not result.ready
     assert not result.linux_execution

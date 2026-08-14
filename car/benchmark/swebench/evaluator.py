@@ -19,6 +19,7 @@ QUALIFIED_WSL_DISTRIBUTION = "Ubuntu-24.04"
 QUALIFIED_LINUX_ARCHITECTURE = "x86_64"
 QUALIFIED_DOCKER_ARCHITECTURE = "amd64"
 QUALIFIED_MAX_WORKERS = 1
+QUALIFIED_INTERPRETER_RELATIVE = ".car/swebench-4.1.0/bin/python"
 
 
 class SWEbenchEvaluationStatus(StrEnum):
@@ -55,7 +56,9 @@ class SWEbenchEvaluationRequest(BaseModel):
     split: str = SWEBENCH_SPLIT
     swebench_version: str = QUALIFIED_SWEBENCH_VERSION
     wsl_distribution: str = QUALIFIED_WSL_DISTRIBUTION
-    linux_python: str = "python3"
+    # Resolved by ``resolve_qualified_interpreter`` immediately before preflight
+    # or execution; a bare system interpreter is never an acceptable fallback.
+    linux_python: str = QUALIFIED_INTERPRETER_RELATIVE
     max_workers: int = Field(default=QUALIFIED_MAX_WORKERS, ge=1, le=QUALIFIED_MAX_WORKERS)
 
     @field_validator("instance_ids")
@@ -90,6 +93,26 @@ class SWEbenchEvaluationRequest(BaseModel):
         )
 
 
+def resolve_qualified_interpreter(
+    request: SWEbenchEvaluationRequest,
+    *,
+    command_runner: DockerCommandRunner | None = None,
+) -> SWEbenchEvaluationRequest:
+    """Resolve CAR's fixed evaluator venv under the current WSL user's home."""
+    if request.linux_python.startswith("/"):
+        return request
+    if request.linux_python != QUALIFIED_INTERPRETER_RELATIVE:
+        raise ValueError("qualified evaluator interpreter configuration is invalid")
+    runner = command_runner or run_docker_info
+    code, stdout, _ = runner(
+        ["wsl.exe", "-d", request.wsl_distribution, "--", "/bin/sh", "-lc", 'printf %s "$HOME"']
+    )
+    home = stdout.strip()
+    if code != 0 or not home.startswith("/"):
+        raise ValueError("qualified evaluator home could not be resolved")
+    return request.model_copy(update={"linux_python": f"{home}/{QUALIFIED_INTERPRETER_RELATIVE}"})
+
+
 def windows_to_wsl_path(path: Path, *, command_runner: DockerCommandRunner | None = None) -> str:
     """Translate an owned Windows artifact path through the selected WSL distro."""
     runner = command_runner or run_docker_info
@@ -110,6 +133,7 @@ def run_qualified_evaluator(request: SWEbenchEvaluationRequest) -> SWEbenchEvalu
     Linux Python, never passed as a Windows path to WSL.
     """
     try:
+        request = resolve_qualified_interpreter(request)
         predictions_path = windows_to_wsl_path(request.predictions_path)
         evaluator_directory = windows_to_wsl_path(request.evaluator_directory)
     except ValueError as error:
@@ -248,6 +272,24 @@ def check_preflight(
         instance_ids=("preflight",),
     )
     runner = command_runner or run_docker_info
+    try:
+        request = resolve_qualified_interpreter(request, command_runner=runner)
+    except ValueError as error:
+        return SWEbenchPreflight(
+            linux_execution=False,
+            docker_available=False,
+            linux_containers=False,
+            architecture_compatible=False,
+            swebench_version=None,
+            swebench_version_compatible=False,
+            runtime_contract_valid=False,
+            dataset_contract_valid=False,
+            max_workers_policy_valid=False,
+            free_disk_gib=0,
+            required_disk_gib=required_disk_gib,
+            ready=False,
+            messages=(str(error),),
+        )
     wsl_available = shutil.which("wsl.exe") is not None
     linux_execution = False
     architecture_compatible = False
