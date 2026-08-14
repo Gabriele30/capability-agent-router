@@ -13,7 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SWEBENCH_DATASET = "SWE-bench/SWE-bench_Verified"
+SWEBENCH_SAMPLE_DATASET = "SWE-bench/SWE-bench_Verified"
+SWEBENCH_EVALUATOR_DATASET = "princeton-nlp/SWE-bench_Verified"
 SWEBENCH_SPLIT = "test"
 SAMPLE_PREFIX = "car-external-v1"
 SAMPLE_ALGORITHM_VERSION = "swebench-verified-stratified-v1"
@@ -83,7 +84,9 @@ class SWEbenchSampleSpec(BaseModel):
 
     schema_version: Literal[1] = 1
     benchmark: Literal["swebench_verified"] = "swebench_verified"
-    dataset: Literal["SWE-bench/SWE-bench_Verified"] = SWEBENCH_DATASET
+    # This identifies the historical source population used for deterministic
+    # selection. The qualified evaluator dataset is a separate runtime contract.
+    dataset: Literal["SWE-bench/SWE-bench_Verified"] = SWEBENCH_SAMPLE_DATASET
     dataset_revision: str = Field(min_length=40, max_length=40)
     split: Literal["test"] = SWEBENCH_SPLIT
     sampling_prefix: Literal["car-external-v1"] = SAMPLE_PREFIX

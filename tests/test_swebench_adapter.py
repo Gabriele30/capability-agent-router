@@ -10,6 +10,8 @@ import pytest
 from car.benchmark.models import BenchmarkStrategy
 from car.benchmark.results import BenchmarkFailureKind
 from car.benchmark.swebench.evaluator import (
+    QUALIFIED_SWEBENCH_VERSION,
+    QUALIFIED_WSL_DISTRIBUTION,
     SWEbenchEvaluationRequest,
     SWEbenchEvaluationResult,
     SWEbenchEvaluationStatus,
@@ -207,6 +209,38 @@ def test_tracked_sample_spec_has_a_valid_canonical_identity() -> None:
         "1-4 hours": 2,
         ">4 hours": 1,
     }
+    assert specification.sample_sha256 == (
+        "dc51478dd492d91dc6b117e89c0b8adf61710d751de5b3bfee9b2a263d5f7d5f"
+    )
+    assert tuple(item.instance_id for item in specification.instances) == (
+        "astropy__astropy-13398",
+        "astropy__astropy-14369",
+        "sympy__sympy-13647",
+        "django__django-14311",
+        "matplotlib__matplotlib-14623",
+        "django__django-15382",
+        "scikit-learn__scikit-learn-26194",
+        "sympy__sympy-22914",
+        "django__django-15732",
+        "pydata__xarray-6744",
+        "astropy__astropy-13977",
+        "scikit-learn__scikit-learn-25747",
+        "matplotlib__matplotlib-20826",
+        "sympy__sympy-24443",
+        "sphinx-doc__sphinx-9281",
+        "sphinx-doc__sphinx-9591",
+        "matplotlib__matplotlib-24149",
+        "scikit-learn__scikit-learn-12585",
+        "sphinx-doc__sphinx-9367",
+        "pytest-dev__pytest-7432",
+        "pytest-dev__pytest-6202",
+        "pydata__xarray-4094",
+        "pytest-dev__pytest-5262",
+        "pydata__xarray-6992",
+    )
+    assert "psf__requests-2317" not in {item.instance_id for item in specification.instances}
+    assert specification.instances[19].instance_id == "pytest-dev__pytest-7432"
+    assert specification.instances[19].repo == "pytest-dev/pytest"
 
 
 def test_evaluator_outcomes_preserve_infrastructure_failure_boundary() -> None:
@@ -227,13 +261,20 @@ def test_evaluator_outcomes_preserve_infrastructure_failure_boundary() -> None:
 
     assert unresolved.failure_kind == BenchmarkFailureKind.TASK_FAILED
     assert not unresolved.infrastructure_failure
+    empty_patch = map_evaluation_result(
+        SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.EMPTY_PATCH, diagnostic="empty patch"
+        )
+    )
+    assert not empty_patch.verified_success
+    assert empty_patch.failure_kind == BenchmarkFailureKind.TASK_FAILED
     assert infrastructure.failure_kind == BenchmarkFailureKind.EXECUTION_FAILED
     assert infrastructure.infrastructure_failure
 
 
-def test_official_evaluator_command_is_pinned_and_contains_no_gold_data(tmp_path: Path) -> None:
+def test_qualified_wsl_evaluator_command_contains_no_gold_data(tmp_path: Path) -> None:
     request = SWEbenchEvaluationRequest(
-        harness_directory=tmp_path / "official-harness",
+        evaluator_directory=tmp_path / "official-evaluator",
         predictions_path=tmp_path / "evaluator-owned-predictions.jsonl",
         run_id="car-swebench-dry",
         instance_ids=("org__task-1",),
@@ -241,28 +282,76 @@ def test_official_evaluator_command_is_pinned_and_contains_no_gold_data(tmp_path
 
     command = request.command()
 
-    assert command[:3] == ("python", "-m", "swebench.harness.run_evaluation")
-    assert "SWE-bench/SWE-bench_Verified" in command
+    assert command[:7] == (
+        "wsl.exe",
+        "-d",
+        QUALIFIED_WSL_DISTRIBUTION,
+        "--",
+        "python3",
+        "-m",
+        "swebench.harness.run_evaluation",
+    )
+    assert "princeton-nlp/SWE-bench_Verified" in command
     assert "--split" in command and "test" in command
     assert "patch" not in command
     assert "test_patch" not in command
 
 
-def test_preflight_is_injected_and_does_not_change_the_host(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("car.benchmark.swebench.evaluator.shutil.which", lambda _: "docker")
+def test_qualified_preflight_is_injected_and_does_not_change_the_host(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("car.benchmark.swebench.evaluator.shutil.which", lambda _: "wsl.exe")
     monkeypatch.setattr(
         "car.benchmark.swebench.evaluator.shutil.disk_usage",
         lambda _: type("Usage", (), {"free": 200 * 1024**3})(),
     )
 
-    result = check_preflight(
-        tmp_path,
-        command_runner=lambda args: (0, "linux\n", "") if args[0] == "docker" else (1, "", ""),
-    )
+    def runner(args: list[str]) -> tuple[int, str, str]:
+        if args[-2:] == ["uname", "-s"]:
+            return 0, "Linux\n", ""
+        if args[-2:] == ["uname", "-m"]:
+            return 0, "x86_64\n", ""
+        if args[-2:] == ["--format", "{{.OSType}} {{.Architecture}}"]:
+            return 0, "linux amd64\n", ""
+        if any("importlib.metadata" in argument for argument in args):
+            return 0, f"{QUALIFIED_SWEBENCH_VERSION}\n", ""
+        return 1, "", "unexpected command"
+
+    result = check_preflight(tmp_path, command_runner=runner)
 
     assert result.docker_available
+    assert result.linux_execution
     assert result.linux_containers
-    assert result.ready == result.architecture_compatible
+    assert result.swebench_version == QUALIFIED_SWEBENCH_VERSION
+    assert result.runtime_contract_valid
+    assert result.dataset_contract_valid
+    assert result.max_workers_policy_valid
+    assert result.ready
+
+
+def test_preflight_fails_closed_for_windows_or_old_contract(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("car.benchmark.swebench.evaluator.shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "car.benchmark.swebench.evaluator.shutil.disk_usage",
+        lambda _: type("Usage", (), {"free": 200 * 1024**3})(),
+    )
+    request = SWEbenchEvaluationRequest(
+        evaluator_directory=tmp_path,
+        predictions_path=tmp_path / "prediction.jsonl",
+        run_id="preflight-old-contract",
+        instance_ids=("org__task-1",),
+        dataset="SWE-bench/SWE-bench_Verified",
+        dataset_revision="03e151cf5560b1af6a4363c6a9d766deaaea6b56",
+    )
+
+    result = check_preflight(tmp_path, request=request, command_runner=lambda _: (1, "", ""))
+
+    assert not result.ready
+    assert not result.linux_execution
+    assert not result.dataset_contract_valid
+    assert result.runtime_contract_valid
+    assert not result.swebench_version_compatible
+    assert any("Windows Python" in message for message in result.messages)
 
 
 def _git_repository(path: Path) -> None:

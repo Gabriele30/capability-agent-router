@@ -16,10 +16,23 @@ provider billing. No provider is invoked as part of this plan.
 The benchmark-side SWE-bench Verified adapter is now implemented without a CAR
 runtime change. Its tracked identity is
 [`benchmark_specs/swebench-verified-v1.json`](../benchmark_specs/swebench-verified-v1.json):
-it pins dataset revision `03e151cf5560b1af6a4363c6a9d766deaaea6b56`,
-official harness revision `c7fd5abffe0b2086a8bb9389d23c47d930ef571f`, and
-the ordered 24-instance sample identity
-`9a0f50548c1c1747878ea340ff9d2da5060662742a01eeb5edcf70d69230a06c`.
+it preserves the historical deterministic source selection while freezing the
+ordered 24-instance sample identity
+`dc51478dd492d91dc6b117e89c0b8adf61710d751de5b3bfee9b2a263d5f7d5f`.
+The qualified execution contract is Ubuntu 24.04 WSL2/Linux x86_64, Python
+3.12.3, `swebench==4.1.0`, Docker Linux/amd64, one worker, and
+`princeton-nlp/SWE-bench_Verified` at
+`c104f840cc67f8b6eec6f759ebc8b2693d585d4a`. Native Windows Python and the
+former Windows/harness contract are invalid evaluator paths.
+
+The original sample hash
+`9a0f50548c1c1747878ea340ff9d2da5060662742a01eeb5edcf70d69230a06c` remains
+historical. Before provider execution, `psf__requests-2317` was excluded after
+an official gold evaluation returned unresolved; deterministic slot-20
+replacement `pytest-dev__pytest-7432` preserves the `<15 min fix` stratum and
+the maximum-three-per-repository constraint. All 24 final cases were gold
+qualified as resolved. This is qualification metadata, not a performance or
+savings result.
 
 The adapter has no provider construction or execution path. It has deterministic
 selection, a provider-safe projection, base-commit and clean-checkout validation,
@@ -71,13 +84,14 @@ official harness/image cache.
 
 Counts and the SWE-bench record fields are frozen from the official dataset
 guide at acquisition time; the eventual run must record the exact dataset and
-harness revisions rather than relying on these planning figures.
+`swebench` package version rather than relying on these planning figures.
 
 ## Recommended dataset
 
 **SWE-bench Verified** is the primary dataset for the first external CAR
 validation: a 24-instance, pre-registered stratified sample from the official
-`SWE-bench/SWE-bench_Verified` test split.
+SWE-bench Verified population, evaluated through
+`princeton-nlp/SWE-bench_Verified` at the qualified revision.
 
 It provides real issue text, public repositories, pinned base commits,
 human-reviewed solvability, and a recognized authoritative evaluation harness.
@@ -109,9 +123,8 @@ population-level statistical certainty.
 
 Before any provider is created or any strategy runs:
 
-1. Pin the Hugging Face dataset revision for `SWE-bench/SWE-bench_Verified`
-   and the SWE-bench harness Git commit. Record both in a committed selection
-   manifest.
+1. Pin the qualified Hugging Face evaluator dataset revision and
+   `swebench==4.1.0`. Record both in a committed qualification record.
 2. Form an eligibility list using only non-solution metadata: `instance_id`,
    `repo`, `base_commit`, `problem_statement`, official `difficulty`, and
    successful local creation of the official environment. Do **not** read
@@ -125,7 +138,7 @@ Before any provider is created or any strategy runs:
    `SHA-256("car-external-v1:" + instance_id)` and take the required prefix.
    This seed and algorithm are the selection rule; no outcome, model response,
    cost, or latency may influence it.
-5. Commit a small selection manifest containing only dataset/harness revisions,
+5. Commit a small selection manifest containing only source-population identity,
    the ordered instance IDs, repositories, base commits, public difficulty, and
    the selection algorithm. It must be committed before the first provider run.
 
@@ -161,8 +174,8 @@ external run is No-Go rather than a reason to modify CAR runtime behavior.
 
 ## Verification
 
-Verified success is determined by the native SWE-bench evaluator for the
-selected pinned harness revision. The evaluator runs in a separate, post-attempt
+Verified success is determined by the native Linux `swebench==4.1.0` evaluator
+for the qualified dataset revision. The evaluator runs in a separate, post-attempt
 environment and applies/uses benchmark-held test data there; CAR must not replace
 it with a CAR-authored expected answer or hidden oracle.
 
@@ -194,10 +207,10 @@ not eliminate public-data model contamination; the report must state that limit.
 
 Use a fresh clone of CAR plus an external cache directory outside the repository:
 
-1. Record CAR commit, `v0.6.0` tag SHA, dataset revision, harness commit,
+1. Record CAR commit, `v0.6.0` tag SHA, dataset revision, `swebench` package version,
    selected-ID manifest hash, base commits, Docker image digests, Python version,
    Docker version, host architecture, CPU/RAM allocation, and strategy model IDs.
-2. Acquire the official dataset and harness at those pinned revisions. Clone each
+2. Acquire the official dataset at its pinned revision. Clone each
    upstream repository at its recorded base commit; never vendor upstream repos
    or Docker layers into CAR.
 3. Build/pull official evaluator images before execution. Once the dataset,
@@ -212,10 +225,10 @@ Use a fresh clone of CAR plus an external cache directory outside the repository
 
 ## Platform requirements
 
-SWE-bench's official evaluation is containerized and is most faithfully run on
-Linux/x86_64. On the current Windows development host, use Docker Desktop with
-the WSL2 backend and Linux containers, preferably through an Ubuntu WSL2
-environment. Native Windows execution is not the recommended protocol.
+SWE-bench's qualified official evaluation is containerized and runs only through
+Ubuntu 24.04 WSL2 Linux/x86_64 on the current Windows development host. Use Docker
+Desktop WSL integration and Linux containers. Native Windows Python execution is
+an invalid protocol.
 
 The SWE-bench README recommends at least 16 GiB RAM, eight CPU cores, and
 approximately 120 GiB of free disk for Docker evaluation. These are minimum
@@ -278,7 +291,7 @@ runtime change** blocker requiring explicit approval.
 **Go** only when all of the following are documented and tested in an
 adapter-only branch before live providers:
 
-- exact official dataset and harness revisions are pinned;
+- exact official dataset revision and `swebench==4.1.0` are pinned;
 - the 24 IDs are selected and committed by the stated pre-provider algorithm;
 - every selected repository is pinned to its public base commit;
 - official Docker environments build and run for two non-provider dry cases in

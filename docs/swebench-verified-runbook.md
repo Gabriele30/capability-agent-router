@@ -1,14 +1,16 @@
 # SWE-bench Verified External Benchmark Runbook
 
-## Frozen identity
+## Qualified evaluator contract
 
-- Dataset: `SWE-bench/SWE-bench_Verified`, `test` split.
-- Dataset revision: `03e151cf5560b1af6a4363c6a9d766deaaea6b56`.
-- SWE-bench harness revision: `c7fd5abffe0b2086a8bb9389d23c47d930ef571f`.
+- Execution environment: Ubuntu 24.04 WSL2, Linux x86_64, Docker Linux/amd64.
+- Python: `3.12.3`; evaluator package: `swebench==4.1.0`.
+- Official evaluator dataset: `princeton-nlp/SWE-bench_Verified`, `test` split,
+  revision `c104f840cc67f8b6eec6f759ebc8b2693d585d4a`.
+- Local resource policy: `max_workers=1`.
 - Sample specification:
   [`benchmark_specs/swebench-verified-v1.json`](../benchmark_specs/swebench-verified-v1.json).
 - Sample SHA-256:
-  `9a0f50548c1c1747878ea340ff9d2da5060662742a01eeb5edcf70d69230a06c`.
+  `dc51478dd492d91dc6b117e89c0b8adf61710d751de5b3bfee9b2a263d5f7d5f`.
 - Provider configuration to record, without changing it: Gemini
   `gemini-3.5-flash-lite`; Codex `gpt-5.6-terra`, effort `medium`.
 
@@ -17,37 +19,48 @@ base commit, difficulty, version, and benchmark configuration. It contains no
 task statement, patch, test patch, test identifier, prediction, credential, or
 provider output.
 
+The historical selection manifest retains its original source-population
+metadata. Its former evaluator contract (Windows-hosted Python, harness
+`c7fd5abffe0b2086a8bb9389d23c47d930ef571f`, and enriched dataset revision
+`03e151cf5560b1af6a4363c6a9d766deaaea6b56`) is invalid for execution and is
+not a permitted fallback.
+
+The original sample hash was
+`9a0f50548c1c1747878ea340ff9d2da5060662742a01eeb5edcf70d69230a06c`.
+Before provider execution, `psf__requests-2317` was excluded because its
+official gold result was unresolved under the qualified evaluator. The original
+slot 20, `<15 min fix` quota, and repository cap were preserved by the
+deterministic replacement `pytest-dev__pytest-7432`. All 24 frozen cases have
+gold-qualified `RESOLVED` outcomes. This is evaluator qualification only; it
+does not establish any CAR performance, cost, or savings result.
+
 ## Prerequisites
 
-Use Linux/x86_64 containers. On the Windows development host, use Docker Desktop
-with the WSL2 backend and Linux containers, preferably from an Ubuntu WSL2 shell.
-Do not alter Docker Desktop or WSL settings automatically.
+The authoritative evaluator runs from Ubuntu 24.04 WSL2 Linux userland. Native
+Windows Python is rejected. Use Docker Desktop WSL integration; do not install a
+second Docker Engine or alter Docker Desktop/WSL settings automatically.
 
-- Docker must be installed and report Linux container mode.
+- WSL must report Linux/x86_64; Docker must report Linux/amd64 container mode.
+- The WSL Python runtime must report `swebench==4.1.0`.
 - Reserve at least 120 GiB free disk, 16 GiB RAM, and eight CPU cores as the
   official SWE-bench planning baseline.
 - Keep the external dataset, upstream repository clones, and Docker cache outside
   the CAR checkout.
-- Use the pinned official harness revision; do not use a floating `main` or
-  `latest` image identity.
+- Use the qualified official dataset identity and revision. Do not fall back to
+  the historical harness/dataset contract or manually repaired images.
 
-Run the adapter's local-only preflight before acquisition. It checks Docker
-availability, Linux mode when explicitly requested with a command runner,
-x86_64 compatibility, and free-disk capacity; it changes no host setting.
+Run the adapter's local-only preflight before acquisition. It fail-closes unless
+Linux userland, x86_64, `swebench==4.1.0`, the qualified dataset/revision,
+Docker Linux/amd64, the one-worker policy, and free-disk capacity are all
+established. It changes no host setting.
 
 ## Acquisition
 
-In an external cache directory, obtain the official harness at its pinned commit:
-
-```text
-git clone https://github.com/SWE-bench/SWE-bench.git swe-bench
-git -C swe-bench checkout c7fd5abffe0b2086a8bb9389d23c47d930ef571f
-```
-
-Obtain the official Hugging Face dataset at revision
-`03e151cf5560b1af6a4363c6a9d766deaaea6b56`. Record the acquisition tool version
-and cache location only in local run metadata. Do not vendor dataset files,
-upstream repositories, or Docker images into CAR.
+In an external Linux-side cache directory, obtain the official Hugging Face
+dataset `princeton-nlp/SWE-bench_Verified` at revision
+`c104f840cc67f8b6eec6f759ebc8b2693d585d4a`. Record the package version and
+cache location only in local run metadata. Do not vendor dataset files, upstream
+repositories, or Docker images into CAR.
 
 Before the first provider execution, verify the downloaded metadata produces the
 same ordered 24 IDs and sample SHA as the tracked specification. If it does not,
@@ -102,9 +115,10 @@ For a future actual candidate evaluation, the official harness invocation is
 conceptually:
 
 ```text
-python -m swebench.harness.run_evaluation
-  --dataset_name SWE-bench/SWE-bench_Verified
+wsl.exe -d Ubuntu-24.04 -- python3 -m swebench.harness.run_evaluation
+  --dataset_name princeton-nlp/SWE-bench_Verified
   --predictions_path <evaluator-owned-empty-predictions.jsonl>
+  --max_workers 1
   --run_id car-swebench-dry
 ```
 
@@ -125,7 +139,8 @@ details may enter CAR/provider state.
 Only after a successful smoke and all Go criteria in
 [the external benchmark plan](external-benchmark-plan.md) are met:
 
-1. Record CAR commit/version, tag SHA, sample SHA, dataset/harness revision,
+1. Record CAR commit/version, tag SHA, sample SHA, dataset revision, `swebench`
+   package version,
    Docker image digest, platform, resource allocation, and price catalog identity.
 2. Generate one fresh base workspace for each selected instance and strategy.
 3. Give the three strategies the same issue text, context, scope, timeout budget,
