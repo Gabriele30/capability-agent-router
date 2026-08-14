@@ -29,6 +29,7 @@ from car.benchmark.models import BenchmarkStrategy
 from car.benchmark.presentation import render_benchmark_report
 from car.benchmark.runner import BenchmarkRunner
 from car.benchmark.service import run_manifest_benchmark
+from car.benchmark.swebench.runtime import run_swebench_instance
 from car.cli.presentation import present_execution_result
 from car.codex.runtime import LocalCodexRuntime
 from car.codex_write.models import CodexWriteAuthorization, CodexWritePolicy
@@ -858,6 +859,39 @@ def benchmark(
         console.print(f"[red]Error:[/] Benchmark failed: {error}")
         raise typer.Exit(code=1) from error
     render_benchmark_report(report, console)
+
+
+@app.command(name="swebench-run")
+def swebench_run(
+    instance: Annotated[str, typer.Option("--instance", help="Official SWE-bench instance ID.")],
+    strategy: Annotated[str, typer.Option("--strategy", help="gemini-only, codex-only, or car.")],
+    live: Annotated[
+        bool, typer.Option("--live", help="Acknowledge live provider and evaluator execution.")
+    ] = False,
+) -> None:
+    """Run one opt-in SWE-bench instance through CAR and the native oracle."""
+    if not live:
+        console.print("SWE-bench live execution requires explicit --live acknowledgement.")
+        raise typer.Exit(code=2)
+    try:
+        selected = BenchmarkStrategy(strategy.replace("-", "_"))
+    except ValueError as error:
+        raise typer.BadParameter("Strategy must be gemini-only, codex-only, or car.") from error
+    repository = _scan_or_exit()
+    _, config_path, _ = _context_paths(repository.root)
+    config = _load_config(config_path) if config_path.exists() else CarConfig()
+    try:
+        run = run_swebench_instance(
+            instance,
+            selected,
+            executor=_build_benchmark_executor(config),
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        console.print(f"[red]SWE-bench execution failed:[/] {error}")
+        raise typer.Exit(code=1) from error
+    console.print(f"Instance: {run.result.case_id}")
+    console.print(f"Strategy: {run.result.strategy.value}")
+    console.print(f"Verified success: {run.result.verified_success}")
 
 
 def main() -> None:

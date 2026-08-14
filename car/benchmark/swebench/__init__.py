@@ -19,6 +19,13 @@ from car.benchmark.swebench.projection import (
     project_provider_visible,
     validate_base_checkout,
 )
+from car.benchmark.swebench.runtime import (
+    SWEbenchLiveRun,
+    extract_candidate_patch,
+    load_public_instance,
+    run_swebench_instance,
+    write_prediction,
+)
 from car.benchmark.swebench.selection import select_verified_sample
 
 __all__ = [
@@ -27,13 +34,18 @@ __all__ = [
     "SWEbenchEvaluationRequest",
     "SWEbenchEvaluationStatus",
     "SWEbenchInstance",
+    "SWEbenchLiveRun",
     "SWEbenchPreflight",
     "SWEbenchProviderProjection",
     "SWEbenchSampleSpec",
     "explicit_repository_scope",
+    "extract_candidate_patch",
+    "load_public_instance",
     "map_evaluation_result",
     "load_sample_spec",
     "project_provider_visible",
     "select_verified_sample",
+    "run_swebench_instance",
     "validate_base_checkout",
+    "write_prediction",
 ]

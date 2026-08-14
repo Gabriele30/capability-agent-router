@@ -150,3 +150,13 @@ Only after a successful smoke and all Go criteria in
    gold patches, test patches, raw source, credentials, or raw provider output.
 
 No benchmark performance result is produced by this adapter milestone.
+
+## Live CAR execution bridge
+
+The opt-in `car swebench-run --instance <id> --strategy <strategy> --live`
+boundary creates disposable exact-base checkouts, runs the existing CAR
+controlled provider pipeline, derives a Git patch only from CAR-accepted paths,
+then hands a minimal official prediction to the qualified Linux evaluator.
+Provider scratch is never evaluated. The native SWE-bench result is the final
+oracle; gold fields remain evaluator-only. Windows Python is not supported for
+evaluator execution. The frozen 24-instance sample remains unchanged.

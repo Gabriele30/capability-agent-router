@@ -90,6 +90,106 @@ class SWEbenchEvaluationRequest(BaseModel):
         )
 
 
+def windows_to_wsl_path(path: Path, *, command_runner: DockerCommandRunner | None = None) -> str:
+    """Translate an owned Windows artifact path through the selected WSL distro."""
+    runner = command_runner or run_docker_info
+    code, stdout, _ = runner(
+        ["wsl.exe", "-d", QUALIFIED_WSL_DISTRIBUTION, "--", "wslpath", "-a", str(path.resolve())]
+    )
+    translated = stdout.strip()
+    if code != 0 or not translated.startswith("/"):
+        raise ValueError("evaluator artifact is not accessible from the qualified WSL environment")
+    return translated
+
+
+def run_qualified_evaluator(request: SWEbenchEvaluationRequest) -> SWEbenchEvaluationResult:
+    """Execute the already-qualified native evaluator and parse one report.
+
+    This explicit live boundary performs no provider work.  The prediction file
+    is owned by a disposable CAR workspace and is translated before invoking
+    Linux Python, never passed as a Windows path to WSL.
+    """
+    try:
+        predictions_path = windows_to_wsl_path(request.predictions_path)
+        evaluator_directory = windows_to_wsl_path(request.evaluator_directory)
+    except ValueError as error:
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE, diagnostic=str(error)
+        )
+    command = list(request.command())
+    command[command.index(str(request.predictions_path))] = predictions_path
+    command[3:4] = ["--cd", evaluator_directory, "--"]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE,
+            diagnostic="qualified evaluator process could not start",
+        )
+    if completed.returncode != 0:
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE,
+            diagnostic="qualified evaluator exited abnormally",
+        )
+    return parse_native_report(request, request.evaluator_directory)
+
+
+def parse_native_report(
+    request: SWEbenchEvaluationRequest, evaluator_directory: Path
+) -> SWEbenchEvaluationResult:
+    """Parse exactly one native report under the caller-owned evaluator root."""
+    expected = request.instance_ids[0] if len(request.instance_ids) == 1 else None
+    if expected is None:
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE,
+            diagnostic="native result parsing requires one requested instance",
+        )
+    reports = tuple(evaluator_directory.rglob("report.json"))
+    matches = tuple(path for path in reports if expected in path.parts)
+    if len(matches) != 1:
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE,
+            diagnostic="native evaluator report is missing or ambiguous",
+        )
+    try:
+        import json
+
+        report = json.loads(matches[0].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE,
+            diagnostic="native evaluator report could not be read",
+        )
+    if report.get("instance_id") not in (None, expected):
+        return SWEbenchEvaluationResult(
+            status=SWEbenchEvaluationStatus.INFRASTRUCTURE_FAILURE,
+            diagnostic="native evaluator report identity mismatch",
+        )
+    return SWEbenchEvaluationResult(
+        status=(
+            SWEbenchEvaluationStatus.RESOLVED
+            if report.get("resolved") is True
+            else SWEbenchEvaluationStatus.UNRESOLVED
+        ),
+        diagnostic=("resolved" if report.get("resolved") is True else "unresolved"),
+        image_digest=_image_digest(report),
+    )
+
+
+def _image_digest(report: object) -> str | None:
+    if not isinstance(report, dict):
+        return None
+    image = report.get("image_name") or report.get("image_digest")
+    return image if isinstance(image, str) and len(image) <= 256 else None
+
+
 class SWEbenchEvaluationMapping(BaseModel):
     verified_success: bool
     failure_kind: BenchmarkFailureKind | None = None
