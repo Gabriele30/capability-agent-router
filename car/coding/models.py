@@ -30,6 +30,11 @@ class CodingTaskContext(BaseModel):
     route: Route
     repository: RepositoryClassificationContext
     files: list[CodingFileContext] = Field(default_factory=list)
+    # The files supplied as text are deliberately not necessarily the complete
+    # write-authorization universe (large repository benchmarks use a bounded
+    # textual subset).  Empty preserves the historic selected-files contract.
+    authorized_paths: tuple[str, ...] = ()
+    authorization_summary: str | None = Field(default=None, max_length=1_000)
     constraints: list[str] = Field(default_factory=list)
     safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS
 
@@ -40,6 +45,21 @@ class CodingTaskContext(BaseModel):
         if not normalized:
             raise ValueError("task must not be blank")
         return normalized
+
+    @field_validator("authorized_paths")
+    @classmethod
+    def authorized_paths_must_be_repository_relative(
+        cls, values: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        normalized = tuple(_repository_relative_path(value) for value in values)
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("authorized paths must be unique")
+        return normalized
+
+    @property
+    def task_authorized_paths(self) -> tuple[str, ...]:
+        """Return the authoritative task scope, falling back to supplied text files."""
+        return self.authorized_paths or tuple(file.path for file in self.files)
 
 
 class FileChangeOperation(StrEnum):

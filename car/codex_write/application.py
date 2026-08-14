@@ -99,12 +99,17 @@ class AppliedCodexSourceTransaction:
             or _git_index_digest(self.root) != self._index_digest
         ):
             return False
+        targets = {path.as_posix() for path in self._snapshot.files}
+        if not self._source_baseline.complete_file_identities:
+            return (
+                _clean_baseline_has_only_targets(self.root, targets)
+                and self.applied_identities_match()
+            )
         captured = SourceBaselineService().capture(self.root, policy)
         if not captured.captured or captured.baseline is None:
             return False
         observed = {item.path: item for item in captured.baseline.files}
         expected = {item.path: item for item in self._source_baseline.files}
-        targets = {path.as_posix() for path in self._snapshot.files}
         if set(observed) - targets != set(expected) - targets:
             return False
         if any(observed[path] != expected[path] for path in set(expected) - targets):
@@ -460,3 +465,18 @@ def _same_git_metadata(current: CodexFileIdentity, before: CodexFileIdentity) ->
         and current.is_symlink == before.is_symlink
         and current.protected == before.protected
     )
+
+
+def _clean_baseline_has_only_targets(root: Path, targets: set[str]) -> bool:
+    output = _git_output(root, ["status", "--porcelain=v1", "-z"], raw=True)
+    if not isinstance(output, bytes):
+        return False
+    try:
+        paths = {
+            entry[3:].decode("utf-8", errors="strict")
+            for entry in output.split(b"\0")
+            if entry and len(entry) > 3 and entry[2:3] == b" "
+        }
+    except (IndexError, UnicodeDecodeError, ValueError):
+        return False
+    return paths == targets

@@ -83,6 +83,7 @@ def execute_coding_flow(
     codex_write_policy: CodexWritePolicy | None = None,
     codex_write_authorization: CodexWriteAuthorization | None = None,
     codex_write_paths: tuple[str, ...] = (),
+    codex_write_scope_summary: str | None = None,
     codex_model: str | None = None,
     codex_reasoning_effort=None,
     patch_applier: SafePatchApplier | None = None,
@@ -109,6 +110,7 @@ def execute_coding_flow(
             codex_write_policy=codex_write_policy,
             codex_write_authorization=codex_write_authorization,
             codex_write_paths=codex_write_paths,
+            codex_write_scope_summary=codex_write_scope_summary,
             codex_model=codex_model,
             codex_reasoning_effort=codex_reasoning_effort,
             controlled_write_pipeline=controlled_write_pipeline,
@@ -246,6 +248,7 @@ def execute_coding_flow(
             codex_write_policy=codex_write_policy or CodexWritePolicy(),
             codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
             codex_write_paths=codex_write_paths,
+            codex_write_scope_summary=codex_write_scope_summary,
             codex_model=codex_model,
             codex_reasoning_effort=codex_reasoning_effort,
             controlled_write_pipeline=controlled_write_pipeline,
@@ -295,6 +298,7 @@ def execute_coding_flow(
         codex_write_policy=codex_write_policy or CodexWritePolicy(),
         codex_write_authorization=codex_write_authorization or CodexWriteAuthorization(),
         codex_write_paths=codex_write_paths,
+        codex_write_scope_summary=codex_write_scope_summary,
         codex_model=codex_model,
         codex_reasoning_effort=codex_reasoning_effort,
         controlled_write_pipeline=controlled_write_pipeline,
@@ -375,6 +379,7 @@ def _execute_direct_codex_controlled_write(
     codex_write_policy,
     codex_write_authorization,
     codex_write_paths,
+    codex_write_scope_summary,
     codex_model,
     codex_reasoning_effort,
     controlled_write_pipeline,
@@ -396,7 +401,14 @@ def _execute_direct_codex_controlled_write(
         codex_write_policy or CodexWritePolicy(),
         codex_write_authorization or CodexWriteAuthorization(),
     )
-    if codex_reasoning_effort is not None:
+    if codex_write_scope_summary is not None:
+        controlled = pipeline.execute(
+            *arguments,
+            codex_model=codex_model,
+            codex_reasoning_effort=codex_reasoning_effort,
+            authorization_summary=codex_write_scope_summary,
+        )
+    elif codex_reasoning_effort is not None:
         controlled = pipeline.execute(
             *arguments,
             codex_model=codex_model,

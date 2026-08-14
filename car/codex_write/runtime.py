@@ -368,9 +368,12 @@ def _stdin(request: ControlledCodexWriteRequest) -> str:
         "# CAR Controlled Codex Write Request",
         "\nTask:\n" + request.task,
         "\n"
-        + render_agent_write_scope(
-            request.authorized_paths,
-            safe_auxiliary_paths=request.safe_auxiliary_paths,
+        + (
+            request.authorization_summary
+            or render_agent_write_scope(
+                request.authorized_paths,
+                safe_auxiliary_paths=request.safe_auxiliary_paths,
+            )
         ),
         "\nSCRATCH WORKSPACE\n"
         + (

@@ -62,6 +62,7 @@ def process_verified_coding_outcome(
     codex_write_policy: CodexWritePolicy | None = None,
     codex_write_authorization: CodexWriteAuthorization | None = None,
     codex_write_paths: tuple[str, ...] = (),
+    codex_write_scope_summary: str | None = None,
     codex_model: str | None = None,
     codex_reasoning_effort=None,
     controlled_write_pipeline: ControlledCodexWritePipeline | None = None,
@@ -132,7 +133,14 @@ def process_verified_coding_outcome(
             write_authorization,
             handoff,
         )
-        if codex_reasoning_effort is not None:
+        if codex_write_scope_summary is not None:
+            controlled = pipeline.execute(
+                *arguments,
+                codex_model=codex_model,
+                codex_reasoning_effort=codex_reasoning_effort,
+                authorization_summary=codex_write_scope_summary,
+            )
+        elif codex_reasoning_effort is not None:
             controlled = pipeline.execute(
                 *arguments,
                 codex_model=codex_model,

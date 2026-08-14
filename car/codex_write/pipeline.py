@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from car.authorization import classify_authorized_path
-from car.coding.models import CodingFileContext, CodingProposal, CodingTaskContext
+from car.coding.models import CodingProposal, CodingTaskContext
 from car.patching.apply import SafePatchApplier
 from car.patching.models import PatchValidationPolicy
 from car.patching.validation import PatchValidator
@@ -73,6 +73,7 @@ class ControlledCodexWritePipeline:
         handoff=None,
         codex_model: str | None = None,
         codex_reasoning_effort=None,
+        authorization_summary: str | None = None,
     ) -> ControlledCodexWritePipelineResult:
         if not policy.enabled:
             return _failure(CodexWriteFailureKind.DISABLED)
@@ -101,6 +102,7 @@ class ControlledCodexWritePipeline:
                     workspace=scratch,
                     task=task,
                     authorized_paths=authorized_paths,
+                    authorization_summary=authorization_summary,
                     safe_auxiliary_paths=policy.safe_auxiliary_paths,
                     handoff=handoff,
                     model=codex_model,
@@ -307,7 +309,8 @@ def _proposal_context(task, paths, policy) -> CodingTaskContext:
         repository=RepositoryClassificationContext(
             name="isolated-workspace", branch="detached", dirty=False, languages={}, systems=[]
         ),
-        files=[CodingFileContext(path=path, content="") for path in paths],
+        authorized_paths=tuple(paths),
+        files=[],
         safe_auxiliary_paths=policy.safe_auxiliary_paths,
     )
 

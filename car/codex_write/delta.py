@@ -72,14 +72,22 @@ class CodexWorkspaceDeltaDetector:
         integrity = self._verify_workspace_integrity(projected)
         if integrity is not None:
             return _reject(CodexWriteFailureKind.WORKSPACE_INTEGRITY_FAILED, integrity)
-        expected = _projected_identities(baseline, projected)
-        scanned = _scan_workspace(workspace.path, policy)
-        if isinstance(scanned, CodexWriteFailureKind):
-            return _reject(scanned, "workspace filesystem could not be observed")
-        observed, case_ambiguous = scanned
-        if case_ambiguous:
-            return _reject(CodexWriteFailureKind.UNEXPECTED_PATH, "case-ambiguous workspace paths")
-        deltas = _deltas(expected, observed)
+        if baseline.complete_file_identities:
+            expected = _projected_identities(baseline, projected)
+            scanned = _scan_workspace(workspace.path, policy)
+            if isinstance(scanned, CodexWriteFailureKind):
+                return _reject(scanned, "workspace filesystem could not be observed")
+            observed, case_ambiguous = scanned
+            if case_ambiguous:
+                return _reject(
+                    CodexWriteFailureKind.UNEXPECTED_PATH, "case-ambiguous workspace paths"
+                )
+            deltas = _deltas(expected, observed)
+        else:
+            compact = self._compact_clean_deltas(workspace.path, policy)
+            if isinstance(compact, CodexWriteFailureKind):
+                return _reject(compact, "workspace Git delta could not be observed")
+            deltas = compact
         status_failure = self._verify_machine_status(workspace.path)
         if status_failure is not None:
             return _reject(status_failure, "workspace Git status is unsupported")
@@ -155,6 +163,95 @@ class CodexWorkspaceDeltaDetector:
 
     def _run(self, cwd: Path, args: list[str]) -> GitCommandResult:
         return self._runner.run(args, cwd=cwd, timeout_seconds=self._timeout_seconds)
+
+    def _compact_clean_deltas(
+        self, workspace: Path, policy: CodexWritePolicy
+    ) -> list[CodexFileDelta] | CodexWriteFailureKind:
+        """Observe only Git-reported changes when HEAD + clean status is the baseline."""
+        modified = self._run(
+            workspace,
+            ["git", "-C", str(workspace), "diff", "--name-status", "-z", "-M"],
+        )
+        untracked = self._run(
+            workspace,
+            [
+                "git",
+                "-C",
+                str(workspace),
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+        )
+        if not _ok(modified) or not _ok(untracked):
+            return CodexWriteFailureKind.DELTA_DETECTION_FAILED
+        try:
+            tracked_deltas = _compact_tracked_deltas(workspace, modified.stdout, policy)
+            untracked_paths = {
+                normalize_repository_relative_path(path)
+                for path in untracked.stdout.split("\0")
+                if path
+            }
+        except ValueError:
+            return CodexWriteFailureKind.UNEXPECTED_PATH
+        if isinstance(tracked_deltas, CodexWriteFailureKind):
+            return tracked_deltas
+        deltas = tracked_deltas
+        tracked_paths = {delta.path for delta in deltas}
+        for path in sorted(untracked_paths - tracked_paths):
+            observed = _observed_file_identity(workspace, path, policy)
+            if isinstance(observed, CodexWriteFailureKind):
+                return observed
+            after, unsafe = observed
+            deltas.append(
+                CodexFileDelta(
+                    path=path,
+                    operation=CodexChangeOperation.CREATE,
+                    after=after,
+                    unsafe_symlink=unsafe,
+                )
+            )
+        return self._coalesce_compact_renames(workspace, deltas)
+
+    def _coalesce_compact_renames(
+        self, workspace: Path, deltas: list[CodexFileDelta]
+    ) -> list[CodexFileDelta]:
+        """Recognize an exact HEAD deletion plus untracked creation as a rename."""
+        remaining = list(deltas)
+        replacements: list[CodexFileDelta] = []
+        for deleted in [item for item in deltas if item.operation == CodexChangeOperation.DELETE]:
+            source_blob = self._git_blob_id(workspace, f"HEAD:{deleted.path}")
+            if source_blob is None or deleted not in remaining:
+                continue
+            created = next(
+                (
+                    item
+                    for item in remaining
+                    if item.operation == CodexChangeOperation.CREATE
+                    and self._git_blob_id(workspace, item.path) == source_blob
+                ),
+                None,
+            )
+            if created is None:
+                continue
+            remaining.remove(deleted)
+            remaining.remove(created)
+            replacements.append(
+                CodexFileDelta(
+                    path=created.path,
+                    operation=CodexChangeOperation.RENAME,
+                    before=deleted.before,
+                    after=created.after,
+                    unsafe_symlink=deleted.unsafe_symlink or created.unsafe_symlink,
+                )
+            )
+        return sorted([*remaining, *replacements], key=lambda item: item.path)
+
+    def _git_blob_id(self, workspace: Path, value: str) -> str | None:
+        command = "rev-parse" if value.startswith("HEAD:") else "hash-object"
+        result = self._run(workspace, ["git", "-C", str(workspace), command, value])
+        return result.stdout.strip() if _ok(result) else None
 
 
 class CodexWorkspaceDeltaValidator:
@@ -350,6 +447,93 @@ def _scan_workspace(
     if failure is not None:
         return failure
     return observed, False
+
+
+def _observed_file_identity(
+    root: Path, relative: str, policy: CodexWritePolicy
+) -> tuple[CodexFileIdentity | None, bool] | CodexWriteFailureKind:
+    path = root.joinpath(*relative.split("/"))
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None, False
+    except OSError:
+        return CodexWriteFailureKind.DELTA_DETECTION_FAILED
+    if stat.S_ISLNK(info.st_mode):
+        return CodexFileIdentity(path=relative, size_bytes=0, is_symlink=True), True
+    if not stat.S_ISREG(info.st_mode):
+        return CodexFileIdentity(path=relative, size_bytes=0), True
+    if info.st_size > policy.max_file_bytes:
+        return CodexFileIdentity(path=relative, size_bytes=info.st_size), False
+    protected = _protected(relative, policy)
+    return (
+        CodexFileIdentity(
+            path=relative,
+            sha256=None if protected else _file_digest(path),
+            size_bytes=info.st_size,
+            is_binary=False if protected else _is_binary(path),
+            protected=protected,
+        ),
+        False,
+    )
+
+
+def _compact_tracked_deltas(
+    root: Path, output: str, policy: CodexWritePolicy
+) -> list[CodexFileDelta] | CodexWriteFailureKind:
+    records = [record for record in output.split("\0") if record]
+    deltas: list[CodexFileDelta] = []
+    index = 0
+    try:
+        while index < len(records):
+            status = records[index]
+            index += 1
+            if status.startswith(("R", "C")):
+                source = normalize_repository_relative_path(records[index])
+                target = normalize_repository_relative_path(records[index + 1])
+                index += 2
+                observed = _observed_file_identity(root, target, policy)
+                if isinstance(observed, CodexWriteFailureKind):
+                    return observed
+                after, unsafe = observed
+                deltas.append(
+                    CodexFileDelta(
+                        path=target,
+                        operation=CodexChangeOperation.RENAME,
+                        before=CodexFileIdentity(path=source, size_bytes=0),
+                        after=after,
+                        unsafe_symlink=unsafe,
+                    )
+                )
+                continue
+            path = normalize_repository_relative_path(records[index])
+            index += 1
+            if status == "D":
+                deltas.append(
+                    CodexFileDelta(
+                        path=path,
+                        operation=CodexChangeOperation.DELETE,
+                        before=CodexFileIdentity(path=path, size_bytes=0),
+                    )
+                )
+                continue
+            if status != "M":
+                return CodexWriteFailureKind.DELTA_DETECTION_FAILED
+            observed = _observed_file_identity(root, path, policy)
+            if isinstance(observed, CodexWriteFailureKind):
+                return observed
+            after, unsafe = observed
+            deltas.append(
+                CodexFileDelta(
+                    path=path,
+                    operation=CodexChangeOperation.MODIFY,
+                    after=after,
+                    unsafe_symlink=unsafe,
+                )
+            )
+    except (IndexError, ValueError):
+        return CodexWriteFailureKind.DELTA_DETECTION_FAILED
+    return deltas
 
 
 def _deltas(

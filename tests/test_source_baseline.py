@@ -43,7 +43,8 @@ def test_clean_capture_and_unchanged_revalidation_are_read_only(git_repository: 
 
     assert captured.captured and captured.baseline is not None
     assert captured.baseline.head_oid == head_before.strip()
-    assert _identity(captured, "README.md").sha256 is not None
+    assert captured.baseline.complete_file_identities is False
+    assert captured.baseline.files == []
     assert service.revalidate(source, captured.baseline, _policy()).matches
     assert (source / "README.md").read_bytes() == content_before
     assert _git(source, "status", "--porcelain=v2", "-z") == status_before

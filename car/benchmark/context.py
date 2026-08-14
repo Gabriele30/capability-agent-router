@@ -1,5 +1,6 @@
 """Build real CAR application inputs for an owned benchmark workspace."""
 
+import re
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -13,6 +14,19 @@ from car.repository.scanner import scan_repository
 from car.router.consultation import RoutingEvaluation, evaluate_routing
 from car.router.models import TaskRequest, UserMode
 from car.verification.models import VerificationPlan
+
+# These limits intentionally bound provider-visible source, not the exact
+# authorization set or CAR's independent proposal/delta limits.
+MAX_PROVIDER_CONTEXT_FILES = 20
+MAX_PROVIDER_CONTEXT_BYTES = 120_000
+BENCHMARK_TRACKED_FILE_SCOPE = (
+    "WRITE SCOPE\n"
+    "CAR authorizes final task changes only to existing tracked regular files in this "
+    "isolated repository. CAR retains the exact membership set and independently validates "
+    "every proposed path. Do not modify tests or verification files unless they are existing "
+    "tracked regular files needed for the task. Optional safe auxiliary paths remain subject "
+    "to CAR's fixed policy; everything else is read-only."
+)
 
 
 class BenchmarkExecutionContext(BaseModel):
@@ -36,7 +50,7 @@ def build_execution_context(
     repository = scan_repository(root)
     mode = UserMode.GEMINI if strategy == BenchmarkStrategy.GEMINI_ONLY else UserMode.AUTO
     routing = evaluate_routing(TaskRequest(description=case.task), repository, mode, provider=None)
-    files = []
+    candidates: list[tuple[str, str]] = []
     for relative in case.authorized_paths:
         target = (root / relative).resolve(strict=True)
         target.relative_to(root)
@@ -44,7 +58,8 @@ def build_execution_context(
             raise ValueError(f"benchmark path is not a regular file: {relative}")
         text = _read_provider_text(target)
         if text is not None:
-            files.append(CodingFileContext(path=relative, content=text))
+            candidates.append((relative, text))
+    files = _select_provider_context(case.task, candidates)
     verification = _verification_plan(root, case)
     coding = CodingTaskContext(
         task=case.task,
@@ -57,6 +72,8 @@ def build_execution_context(
             systems=repository.project_signals.systems,
         ),
         files=files,
+        authorized_paths=case.authorized_paths,
+        authorization_summary=BENCHMARK_TRACKED_FILE_SCOPE,
     )
     return BenchmarkExecutionContext(
         case=case,
@@ -78,6 +95,33 @@ def _read_provider_text(path: Path) -> str | None:
         return content.decode("utf-8")
     except UnicodeDecodeError:
         return None
+
+
+def _select_provider_context(
+    task: str, candidates: list[tuple[str, str]]
+) -> list[CodingFileContext]:
+    """Choose a small, deterministic public-text subset independent of providers."""
+    terms = set(re.findall(r"[a-z0-9]{3,}", task.casefold()))
+
+    def rank(candidate: tuple[str, str]) -> tuple[int, int, str]:
+        path, _ = candidate
+        path_terms = set(re.findall(r"[a-z0-9]{3,}", path.casefold()))
+        matches = len(terms & path_terms)
+        return (-matches, len(path), path)
+
+    selected: list[CodingFileContext] = []
+    total_bytes = 0
+    for path, content in sorted(candidates, key=rank):
+        content_bytes = len(content.encode("utf-8"))
+        if content_bytes > MAX_PROVIDER_CONTEXT_BYTES:
+            continue
+        if len(selected) >= MAX_PROVIDER_CONTEXT_FILES:
+            break
+        if total_bytes + content_bytes > MAX_PROVIDER_CONTEXT_BYTES:
+            continue
+        selected.append(CodingFileContext(path=path, content=content))
+        total_bytes += content_bytes
+    return selected
 
 
 def _verification_plan(root: Path, case: BenchmarkCase) -> VerificationPlan:

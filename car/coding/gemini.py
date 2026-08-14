@@ -143,12 +143,7 @@ class GeminiCodingProvider:
             "uncertainties; never provide chain-of-thought.\n\n"
             "USER TASK\n"
             f"{context.task}\n\n"
-            f"{
-                render_agent_write_scope(
-                    (file.path for file in context.files),
-                    safe_auxiliary_paths=context.safe_auxiliary_paths,
-                )
-            }\n\n"
+            f"{_write_scope(context)}\n\n"
             "REPOSITORY METADATA\n"
             f"Route: {context.route.value}\n"
             f"{metadata}\n\n"
@@ -164,6 +159,16 @@ class GeminiCodingProvider:
             "Return JSON matching the requested CodingProposal schema. Include exactly one "
             "ProposedFileChange per affected file. Do not wrap patch values in Markdown fences."
         )
+
+
+def _write_scope(context: CodingTaskContext) -> str:
+    """Keep exact authorization internal when a caller supplies compact policy text."""
+    if context.authorization_summary is not None:
+        return context.authorization_summary
+    return render_agent_write_scope(
+        context.task_authorized_paths,
+        safe_auxiliary_paths=context.safe_auxiliary_paths,
+    )
 
 
 def _usage_from_response(response: object) -> TokenUsage | None:

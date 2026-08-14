@@ -26,6 +26,7 @@ class SourceBaseline(CodexWorkspaceBaseline):
 
     head_oid: str = Field(pattern=r"^[0-9a-f]{40,64}$")
     baseline_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    complete_file_identities: bool = True
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,21 @@ class SourceBaselineService:
                 CodexWriteFailureKind.UNSUPPORTED_REPOSITORY_STATE,
                 "rename, type-change, merge, or submodule state is unsupported",
             )
+        # A clean Git worktree is completely represented by its immutable HEAD
+        # plus empty status.  Capturing a per-file digest for every repository
+        # member would incorrectly turn repository size into a task-scope limit.
+        # Dirty sources retain the existing exact per-file capture for projection.
+        if not status:
+            baseline = SourceBaseline(
+                repository_name=root.name,
+                files=[],
+                repository_dirty=False,
+                head_oid=head,
+                total_bytes=0,
+                baseline_digest=_digest(head, [], complete_file_identities=False),
+                complete_file_identities=False,
+            )
+            return BaselineCaptureResult(captured=True, baseline=baseline)
         tracked_result = self._run(root, ["git", "-C", str(root), "ls-files", "-z"])
         if not _ok(tracked_result):
             return _capture_failure(
@@ -123,7 +139,8 @@ class SourceBaselineService:
             untracked_paths=sorted(path for path, entry in status.items() if entry.untracked),
             head_oid=head,
             total_bytes=total_bytes,
-            baseline_digest=_digest(head, identities),
+            baseline_digest=_digest(head, identities, complete_file_identities=True),
+            complete_file_identities=True,
         )
         return BaselineCaptureResult(captured=True, baseline=baseline)
 
@@ -319,9 +336,12 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _digest(head_oid: str, identities: list[CodexFileIdentity]) -> str:
+def _digest(
+    head_oid: str, identities: list[CodexFileIdentity], *, complete_file_identities: bool
+) -> str:
     digest = hashlib.sha256()
     digest.update(head_oid.encode("ascii"))
+    digest.update(b"complete" if complete_file_identities else b"clean-status")
     for identity in sorted(identities, key=lambda item: item.path):
         digest.update(identity.model_dump_json(exclude_none=True).encode("utf-8"))
     return digest.hexdigest()

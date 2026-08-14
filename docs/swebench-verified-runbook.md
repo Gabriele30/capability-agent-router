@@ -92,6 +92,15 @@ public `problem_statement`, `difficulty`, optional upstream `version`, normal
 base-commit repository contents, and deterministic context selected equally for
 all strategies.
 
+Write authorization and provider text are intentionally separate. The exact
+tracked-regular-file membership set remains CAR-internal and is used for
+proposal/delta validation. Provider-visible source is selected deterministically
+from public task terms and repository-relative paths, then capped at **20 files**
+and **120,000 UTF-8 bytes**. Strict UTF-8 text is eligible; binary and non-UTF-8
+files remain eligible for CAR authorization when tracked and regular, but are not
+placed in provider text. These bounds do not change the existing proposal,
+patch, protected-path, or controlled-write delta limits.
+
 The following fields are trusted evaluator-only data and must never be placed in
 `CodingTaskContext`, prompts, Codex scratch preparation, routing, write scope,
 telemetry, public result JSON, or provider logs:

@@ -107,11 +107,13 @@ class _ControlledRuntime:
         self.calls = 0
         self.models: list[str | None] = []
         self.efforts: list[object] = []
+        self.scope_summaries: list[str | None] = []
 
     def execute(self, request, authorization):
         self.calls += 1
         self.models.append(request.model)
         self.efforts.append(request.reasoning_effort)
+        self.scope_summaries.append(request.authorization_summary)
         auxiliary_exists = (
             self.auxiliary_path is not None
             and (request.workspace.workspace.path / self.auxiliary_path).exists()
@@ -731,6 +733,66 @@ def test_context_uses_real_workspace_repository_and_same_verification(tmp_path: 
         assert context.verification.commands[0].args == ["ruff", "check", "target.py"]
     finally:
         spaces.cleanup()
+
+
+def test_large_benchmark_repository_keeps_context_bounded_and_finalizes_small_proposals(
+    tmp_path: Path,
+):
+    fixture = _fixture(tmp_path)
+    for number in range(30):
+        (fixture / f"support_{number:02}.py").write_text(
+            f"VALUE_{number} = {number}\n", encoding="utf-8"
+        )
+    subprocess.run(["git", "add", "."], cwd=fixture, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=benchmark@example.invalid",
+            "-c",
+            "user.name=CAR Benchmark",
+            "commit",
+            "-m",
+            "large fixture",
+        ],
+        cwd=fixture,
+        check=True,
+        capture_output=True,
+    )
+    authorized = tuple(sorted(path.name for path in fixture.iterdir() if path.is_file()))
+    case = _case(fixture, task="Fix target behavior").model_copy(
+        update={"authorized_paths": authorized}
+    )
+    runtime = _ControlledRuntime()
+    provider = _Provider("value = 2")
+    executor = _executor(provider, runtime)
+    spaces = BenchmarkWorkspaceSet(fixture)
+    try:
+        gemini = executor.execute_outcome(
+            case, spaces.workspaces[BenchmarkStrategy.GEMINI_ONLY], BenchmarkStrategy.GEMINI_ONLY
+        )
+        codex = executor.execute_outcome(
+            case, spaces.workspaces[BenchmarkStrategy.CODEX_ONLY], BenchmarkStrategy.CODEX_ONLY
+        )
+        auto = executor.execute_outcome(
+            case, spaces.workspaces[BenchmarkStrategy.CAR], BenchmarkStrategy.CAR
+        )
+    finally:
+        spaces.cleanup()
+
+    assert gemini.telemetry.verified_success is True
+    assert codex.telemetry.verified_success is True
+    assert auto.telemetry.verified_success is True
+    assert provider.calls == 2
+    assert runtime.calls == 1
+    assert runtime.scope_summaries == [
+        "WRITE SCOPE\n"
+        "CAR authorizes final task changes only to existing tracked regular files in this "
+        "isolated repository. CAR retains the exact membership set and independently validates "
+        "every proposed path. Do not modify tests or verification files unless they are existing "
+        "tracked regular files needed for the task. Optional safe auxiliary paths remain subject "
+        "to CAR's fixed policy; everything else is read-only."
+    ]
 
 
 def test_invalid_execution_context_is_an_invariant_failure(tmp_path: Path):

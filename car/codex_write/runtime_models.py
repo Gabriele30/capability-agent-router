@@ -46,6 +46,7 @@ class ControlledCodexWriteRequest(_StrictRuntimeModel):
     workspace: ProjectedIsolatedWorkspace
     task: str = Field(min_length=1, max_length=10_000)
     authorized_paths: tuple[str, ...] = ()
+    authorization_summary: str | None = Field(default=None, max_length=1_000)
     safe_auxiliary_paths: tuple[str, ...] = DEFAULT_SAFE_AUXILIARY_PATHS
     handoff: CodexHandoff | None = None
     timeout_seconds: float | None = Field(default=None, gt=0, le=900)

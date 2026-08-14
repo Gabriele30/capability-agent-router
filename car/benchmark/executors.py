@@ -130,6 +130,7 @@ class CARBenchmarkExecutor:
             CodexWriteAuthorization(authorized=True),
             codex_model=self._dependencies.codex_model,
             codex_reasoning_effort=self._dependencies.codex_reasoning_effort,
+            authorization_summary=context.coding.authorization_summary,
         )
         verification = _codex_verification(result.verification_result)
         collector.finish_attempt(
@@ -177,6 +178,7 @@ class CARBenchmarkExecutor:
             codex_write_policy=self._dependencies.codex_write_policy,
             codex_write_authorization=CodexWriteAuthorization(authorized=True),
             codex_write_paths=context.case.authorized_paths,
+            codex_write_scope_summary=context.coding.authorization_summary,
             codex_model=self._dependencies.codex_model,
             codex_reasoning_effort=self._dependencies.codex_reasoning_effort,
             controlled_write_pipeline=self._dependencies.controlled_pipeline,

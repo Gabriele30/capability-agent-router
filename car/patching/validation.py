@@ -48,7 +48,7 @@ class PatchValidator:
                 PatchViolationKind.PATCH_TOO_LARGE, None, "total patch size exceeds policy"
             )
 
-        selected = {file.path for file in context.files}
+        selected = set(context.task_authorized_paths)
         parsed_files: list[ParsedFilePatch] = []
         task_changed_paths: list[str] = []
         auxiliary_changed_paths: list[str] = []
