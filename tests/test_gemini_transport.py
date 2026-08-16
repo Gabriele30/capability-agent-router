@@ -93,7 +93,13 @@ def test_structured_transport_request_and_privacy():
     assert len(client.interactions.calls) == 1
     call = client.interactions.calls[0]
     assert call["model"] == "configured-model" and call["store"] is False
-    assert call["response_format"][0]["schema"] == ProviderClassification.model_json_schema()
+    assert call["response_format"] == {
+        "type": "text",
+        "mime_type": "application/json",
+        "schema": ProviderClassification.model_json_schema(),
+    }
+    assert "response_mime_type" not in call
+    assert "generation_config" not in call
     assert (
         "CLASSIFIER INSTRUCTIONS" in call["input"]
         and "UNTRUSTED CLASSIFICATION DATA" in call["input"]

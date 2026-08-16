@@ -152,13 +152,11 @@ class GeminiProvider:
             response = client.interactions.create(
                 model=self.config.model,
                 input=prompt,
-                response_format=[
-                    {
-                        "type": "text",
-                        "mime_type": "application/json",
-                        "schema": ProviderClassification.model_json_schema(),
-                    }
-                ],
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": ProviderClassification.model_json_schema(),
+                },
                 store=False,
             )
             output = getattr(response, "output_text", None)

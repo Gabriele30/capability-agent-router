@@ -97,7 +97,13 @@ def test_structured_coding_transport_request_and_prompt_privacy():
     call = client.interactions.calls[0]
     assert call["model"] == "configured-model"
     assert call["store"] is False
-    assert call["response_format"][0]["schema"] == proposal.__class__.model_json_schema()
+    assert call["response_format"] == {
+        "type": "text",
+        "mime_type": "application/json",
+        "schema": proposal.__class__.model_json_schema(),
+    }
+    assert "response_mime_type" not in call
+    assert "generation_config" not in call
     assert "CAR CODING INSTRUCTIONS" in call["input"]
     assert "USER TASK\nUpdate the greeting" in call["input"]
     assert "PATH: src/app.py" in call["input"]
