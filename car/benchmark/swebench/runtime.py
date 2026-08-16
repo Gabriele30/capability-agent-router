@@ -274,4 +274,6 @@ def _task_result(case, strategy, outcome, started: float) -> BenchmarkTaskResult
         patch_violations=outcome.patch_violations,
         task_changed_paths=outcome.task_changed_paths,
         auxiliary_changed_paths=outcome.auxiliary_changed_paths,
+        pipeline_outcome=outcome.pipeline_outcome,
+        provider_error_kind=outcome.provider_error_kind,
     )

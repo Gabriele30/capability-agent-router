@@ -108,6 +108,12 @@ class CARBenchmarkExecutor:
                 pipeline.patch_validation if pipeline else None
             ),
             patch_violations=_patch_violations(pipeline.patch_validation if pipeline else None),
+            pipeline_outcome=pipeline.outcome if pipeline else None,
+            provider_error_kind=(
+                pipeline.coding_attempt.error_kind
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
         )
 
     def _codex_only(self, context) -> BenchmarkExecutionOutcome:
@@ -203,6 +209,12 @@ class CARBenchmarkExecutor:
                 _auxiliary_changed_paths(delta)
                 if delta is not None
                 else _auxiliary_changed_paths(pipeline.patch_validation if pipeline else None)
+            ),
+            pipeline_outcome=pipeline.outcome if pipeline else None,
+            provider_error_kind=(
+                pipeline.coding_attempt.error_kind
+                if pipeline and pipeline.coding_attempt is not None
+                else None
             ),
         )
 

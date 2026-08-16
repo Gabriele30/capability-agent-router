@@ -5,6 +5,9 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
+from car.application.coding import CodingPipelineOutcome
 from car.benchmark import BenchmarkCase, BenchmarkRunner, BenchmarkStrategy
 from car.benchmark.aggregation import aggregate_benchmark
 from car.benchmark.context import build_execution_context
@@ -92,6 +95,18 @@ class _TaskAndAuxiliaryProvider(_Provider):
                 ),
             ],
         )
+
+
+class _InvalidProposalProvider(_Provider):
+    def propose(self, context):
+        self.calls += 1
+        return object()
+
+
+class _UnexpectedProvider(_Provider):
+    def propose(self, context):
+        self.calls += 1
+        raise OSError("synthetic local provider fault")
 
 
 class _ControlledRuntime:
@@ -302,6 +317,54 @@ def test_gemini_only_failure_rolls_back_without_codex(tmp_path: Path):
         assert (fixture / "target.py").read_text(encoding="utf-8") == "value = 1\n"
     finally:
         spaces.cleanup()
+
+
+@pytest.mark.parametrize(
+    "error_kind",
+    (
+        ProviderErrorKind.AUTHENTICATION_ERROR,
+        ProviderErrorKind.RATE_LIMITED,
+        ProviderErrorKind.QUOTA_EXHAUSTED,
+        ProviderErrorKind.INVALID_REQUEST,
+        ProviderErrorKind.TIMEOUT,
+    ),
+)
+def test_gemini_only_preserves_safe_provider_failure_category(
+    tmp_path: Path, error_kind: ProviderErrorKind
+):
+    fixture = _fixture(tmp_path)
+    result = BenchmarkRunner(
+        _executor(_Provider("value = 2", error=error_kind), _ControlledRuntime())
+    ).run_case(_case(fixture), fixture, (BenchmarkStrategy.GEMINI_ONLY,))[0]
+
+    assert result.verified_success is False
+    assert result.telemetry and result.telemetry.attempts[0].failure_kind == "pipeline_failed"
+    assert result.pipeline_outcome == CodingPipelineOutcome.CODING_PROVIDER_FAILED
+    assert result.provider_error_kind == error_kind
+    serialized = result.model_dump_json()
+    assert error_kind.value in serialized
+    for forbidden in (str(fixture.resolve()), "synthetic local provider fault", "stdout", "stderr"):
+        assert forbidden not in serialized
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    (
+        (_InvalidProposalProvider("value = 2"), ProviderErrorKind.INVALID_RESPONSE),
+        (_UnexpectedProvider("value = 2"), ProviderErrorKind.UNKNOWN_ERROR),
+    ),
+)
+def test_gemini_only_preserves_safe_local_proposal_failure_category(
+    tmp_path: Path, provider: _Provider, expected: ProviderErrorKind
+):
+    fixture = _fixture(tmp_path)
+    result = BenchmarkRunner(_executor(provider, _ControlledRuntime())).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.GEMINI_ONLY,)
+    )[0]
+
+    assert result.pipeline_outcome == CodingPipelineOutcome.CODING_PROVIDER_FAILED
+    assert result.provider_error_kind == expected
+    assert provider.calls == 1
 
 
 def test_codex_only_failure_uses_controlled_rollback(tmp_path: Path):

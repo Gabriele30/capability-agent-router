@@ -4,10 +4,12 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
+from car.application.coding import CodingPipelineOutcome
 from car.benchmark.models import BenchmarkStrategy
 from car.coding.models import normalize_repository_relative_path
 from car.economics.models import ExecutionCost
 from car.patching.models import PatchViolationKind
+from car.providers.models import ProviderErrorKind
 from car.telemetry.models import ExecutionTelemetry, FinalOutcome
 
 
@@ -50,6 +52,8 @@ class BenchmarkExecutionOutcome(BaseModel):
     rejected_paths: tuple[str, ...] = ()
     task_changed_paths: tuple[str, ...] = ()
     auxiliary_changed_paths: tuple[str, ...] = ()
+    pipeline_outcome: CodingPipelineOutcome | None = None
+    provider_error_kind: ProviderErrorKind | None = None
 
     @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod
@@ -74,6 +78,8 @@ class BenchmarkTaskResult(BaseModel):
     rejected_paths: tuple[str, ...] = ()
     task_changed_paths: tuple[str, ...] = ()
     auxiliary_changed_paths: tuple[str, ...] = ()
+    pipeline_outcome: CodingPipelineOutcome | None = None
+    provider_error_kind: ProviderErrorKind | None = None
 
     @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod

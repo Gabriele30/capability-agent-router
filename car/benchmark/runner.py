@@ -66,12 +66,16 @@ class BenchmarkRunner:
                 patch_violations = outcome.patch_violations
                 task_changed_paths = outcome.task_changed_paths
                 auxiliary_changed_paths = outcome.auxiliary_changed_paths
+                pipeline_outcome = outcome.pipeline_outcome
+                provider_error_kind = outcome.provider_error_kind
             else:
                 telemetry = outcome
                 rejected_paths = ()
                 patch_violations = ()
                 task_changed_paths = ()
                 auxiliary_changed_paths = ()
+                pipeline_outcome = None
+                provider_error_kind = None
             attempt_costs = tuple(
                 self._costs.calculate(provider=item.provider, model=item.model, usage=item.usage)
                 for item in telemetry.attempts
@@ -100,6 +104,8 @@ class BenchmarkRunner:
                 patch_violations=patch_violations,
                 task_changed_paths=task_changed_paths,
                 auxiliary_changed_paths=auxiliary_changed_paths,
+                pipeline_outcome=pipeline_outcome,
+                provider_error_kind=provider_error_kind,
             )
         except BenchmarkInvariantError:
             return BenchmarkTaskResult(
