@@ -36,7 +36,9 @@ class ProviderErrorKind(StrEnum):
 
 class ProviderError(BaseModel):
     kind: ProviderErrorKind
-    message: str
+    message: str | None = Field(default=None, max_length=500)
+    http_status: int | None = Field(default=None, ge=100, le=599)
+    status: str | None = Field(default=None, max_length=64)
 
 
 class ProviderCapabilities(BaseModel):

@@ -15,11 +15,7 @@ class CodingProviderFailure(RuntimeError):
     """Safe provider failure carrying only CAR's normalized error taxonomy."""
 
     def __init__(self, error: ProviderError | ProviderErrorKind) -> None:
-        self.error = (
-            error
-            if isinstance(error, ProviderError)
-            else ProviderError(kind=error, message="provider coding proposal failed")
-        )
+        self.error = error if isinstance(error, ProviderError) else ProviderError(kind=error)
         self.kind = self.error.kind
         super().__init__(self.kind.value)
 

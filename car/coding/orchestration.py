@@ -8,7 +8,7 @@ from car.coding.models import (
     CodingTaskContext,
     FileChangeOperation,
 )
-from car.providers.models import ProviderErrorKind, ProviderStatus
+from car.providers.models import ProviderError, ProviderErrorKind, ProviderStatus
 
 
 def attempt_coding(
@@ -29,7 +29,7 @@ def attempt_coding(
     try:
         proposal = provider.propose(context)
     except CodingProviderFailure as error:
-        return _failure(provider_name, provider_model, error.kind)
+        return _failure(provider_name, provider_model, error.error)
     except RuntimeError as error:
         return _failure(provider_name, provider_model, _normalized_error_kind(str(error)))
     except Exception:
@@ -61,14 +61,18 @@ def _validate_policy(proposal: CodingProposal, policy: CodingExecutionPolicy) ->
 
 
 def _failure(
-    provider: str, model: str | None, error_kind: ProviderErrorKind
+    provider: str, model: str | None, error: ProviderError | ProviderErrorKind
 ) -> CodingAttemptResult:
+    normalized = error if isinstance(error, ProviderError) else ProviderError(kind=error)
     return CodingAttemptResult(
         provider=provider,
         model=model,
         attempted=True,
         succeeded=False,
-        error_kind=error_kind,
+        error_kind=normalized.kind,
+        provider_http_status=normalized.http_status,
+        provider_error_status=normalized.status,
+        provider_error_message=normalized.message,
     )
 
 

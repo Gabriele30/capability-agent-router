@@ -124,16 +124,32 @@ class CodingAttemptResult(BaseModel):
     succeeded: bool
     proposal: CodingProposal | None = None
     error_kind: ProviderErrorKind | None = None
+    provider_http_status: int | None = Field(default=None, ge=100, le=599)
+    provider_error_status: str | None = Field(default=None, max_length=64)
+    provider_error_message: str | None = Field(default=None, max_length=500)
     usage: object | None = None
 
     @model_validator(mode="after")
     def result_fields_must_be_consistent(self) -> "CodingAttemptResult":
         if self.succeeded:
-            if not self.attempted or self.proposal is None or self.error_kind is not None:
+            if (
+                not self.attempted
+                or self.proposal is None
+                or self.error_kind is not None
+                or self.provider_http_status is not None
+                or self.provider_error_status is not None
+                or self.provider_error_message is not None
+            ):
                 raise ValueError("successful attempts require a proposal and no error")
         elif self.attempted:
             if self.proposal is not None or self.error_kind is None:
                 raise ValueError("failed attempts require an error and no proposal")
-        elif self.proposal is not None or self.error_kind is not None:
+        elif (
+            self.proposal is not None
+            or self.error_kind is not None
+            or self.provider_http_status is not None
+            or self.provider_error_status is not None
+            or self.provider_error_message is not None
+        ):
             raise ValueError("unattempted results cannot include a proposal or error")
         return self

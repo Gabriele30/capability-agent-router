@@ -114,6 +114,21 @@ class CARBenchmarkExecutor:
                 if pipeline and pipeline.coding_attempt is not None
                 else None
             ),
+            provider_http_status=(
+                pipeline.coding_attempt.provider_http_status
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
+            provider_error_status=(
+                pipeline.coding_attempt.provider_error_status
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
+            provider_error_message=(
+                pipeline.coding_attempt.provider_error_message
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
         )
 
     def _codex_only(self, context) -> BenchmarkExecutionOutcome:
@@ -213,6 +228,21 @@ class CARBenchmarkExecutor:
             pipeline_outcome=pipeline.outcome if pipeline else None,
             provider_error_kind=(
                 pipeline.coding_attempt.error_kind
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
+            provider_http_status=(
+                pipeline.coding_attempt.provider_http_status
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
+            provider_error_status=(
+                pipeline.coding_attempt.provider_error_status
+                if pipeline and pipeline.coding_attempt is not None
+                else None
+            ),
+            provider_error_message=(
+                pipeline.coding_attempt.provider_error_message
                 if pipeline and pipeline.coding_attempt is not None
                 else None
             ),

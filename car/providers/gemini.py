@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import time
 from collections.abc import Callable
 
@@ -43,18 +44,23 @@ SAFE_MESSAGES = {
     ProviderErrorKind.INVALID_RESPONSE: "Gemini returned an invalid classification.",
     ProviderErrorKind.UNKNOWN_ERROR: "Gemini request failed.",
 }
+SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[ _-]?key|access[ _-]?token|refresh[ _-]?token|authorization|"
+    r"bearer|token|password|secret)\b\s*[:=]\s*[^\s,;]+"
+)
 
 
 def _map_gemini_error(error: object) -> ProviderError:
     code = getattr(error, "status_code", None)
     if code is None:
         code = getattr(error, "code", None)
-    message = str(getattr(error, "message", "")).lower()
+    message = _safe_provider_message(getattr(error, "message", None))
+    message_for_routing = (message or "").lower()
     if code == 429:
         kind = (
             ProviderErrorKind.QUOTA_EXHAUSTED
             if any(
-                item in message
+                item in message_for_routing
                 for item in (
                     "quota exhausted",
                     "daily quota",
@@ -66,7 +72,41 @@ def _map_gemini_error(error: object) -> ProviderError:
         )
     else:
         kind = HTTP_ERROR_KINDS.get(code, ProviderErrorKind.UNKNOWN_ERROR)
-    return ProviderError(kind=kind, message=SAFE_MESSAGES[kind])
+    return ProviderError(
+        kind=kind,
+        message=message or SAFE_MESSAGES[kind],
+        http_status=code if isinstance(code, int) and 100 <= code <= 599 else None,
+        status=_safe_provider_status(getattr(error, "status", None)),
+    )
+
+
+def _safe_provider_message(value: object) -> str | None:
+    """Retain only a bounded, content-free API diagnostic."""
+    if not isinstance(value, str):
+        return None
+    message = " ".join(value.split())
+    if not message:
+        return None
+    if re.search(r"(?i)\b(?:request|response)\s+(?:body|payload)\b|\bheaders?\s*[:{]", message):
+        return None
+    message = SENSITIVE_ASSIGNMENT.sub(r"\1=<redacted>", message)
+    message = re.sub(r"\bAIza[A-Za-z0-9_-]{20,}\b|\bsk-[A-Za-z0-9_-]{16,}\b", "<redacted>", message)
+    if re.search(r"(?i)\b(?:api[ _-]?key|secret|token|password)\b", message) and (
+        "<redacted>" not in message
+    ):
+        return None
+    if len(message) > 500:
+        return f"{message[:485].rstrip()} [truncated]"
+    return message
+
+
+def _safe_provider_status(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    status = " ".join(value.split())
+    if not status or len(status) > 64 or not re.fullmatch(r"[A-Za-z0-9_. -]+", status):
+        return None
+    return status
 
 
 def is_retryable(kind: ProviderErrorKind) -> bool:

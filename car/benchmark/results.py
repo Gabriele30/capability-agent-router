@@ -54,6 +54,9 @@ class BenchmarkExecutionOutcome(BaseModel):
     auxiliary_changed_paths: tuple[str, ...] = ()
     pipeline_outcome: CodingPipelineOutcome | None = None
     provider_error_kind: ProviderErrorKind | None = None
+    provider_http_status: int | None = Field(default=None, ge=100, le=599)
+    provider_error_status: str | None = Field(default=None, max_length=64)
+    provider_error_message: str | None = Field(default=None, max_length=500)
 
     @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod
@@ -80,6 +83,9 @@ class BenchmarkTaskResult(BaseModel):
     auxiliary_changed_paths: tuple[str, ...] = ()
     pipeline_outcome: CodingPipelineOutcome | None = None
     provider_error_kind: ProviderErrorKind | None = None
+    provider_http_status: int | None = Field(default=None, ge=100, le=599)
+    provider_error_status: str | None = Field(default=None, max_length=64)
+    provider_error_message: str | None = Field(default=None, max_length=500)
 
     @field_validator("rejected_paths", "task_changed_paths", "auxiliary_changed_paths")
     @classmethod

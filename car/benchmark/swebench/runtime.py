@@ -276,4 +276,7 @@ def _task_result(case, strategy, outcome, started: float) -> BenchmarkTaskResult
         auxiliary_changed_paths=outcome.auxiliary_changed_paths,
         pipeline_outcome=outcome.pipeline_outcome,
         provider_error_kind=outcome.provider_error_kind,
+        provider_http_status=outcome.provider_http_status,
+        provider_error_status=outcome.provider_error_status,
+        provider_error_message=outcome.provider_error_message,
     )

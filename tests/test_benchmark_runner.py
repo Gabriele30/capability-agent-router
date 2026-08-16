@@ -22,6 +22,7 @@ from car.coding.base import CodingProviderFailure
 from car.coding.models import CodingProposal, FileChangeOperation, ProposedFileChange
 from car.providers.models import (
     ProviderCapabilities,
+    ProviderError,
     ProviderErrorKind,
     ProviderHealth,
     ProviderStatus,
@@ -39,7 +40,7 @@ class _Provider:
         *,
         model: str | None = None,
         usage: TokenUsage | None = None,
-        error: ProviderErrorKind | None = None,
+        error: ProviderError | ProviderErrorKind | None = None,
     ) -> None:
         self.replacement = replacement
         self.model = model
@@ -365,6 +366,30 @@ def test_gemini_only_preserves_safe_local_proposal_failure_category(
     assert result.pipeline_outcome == CodingPipelineOutcome.CODING_PROVIDER_FAILED
     assert result.provider_error_kind == expected
     assert provider.calls == 1
+
+
+def test_gemini_only_propagates_safe_provider_api_diagnostic(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    provider = _Provider(
+        "value = 2",
+        error=ProviderError(
+            kind=ProviderErrorKind.INVALID_REQUEST,
+            message="response_format schema is invalid",
+            http_status=400,
+            status="INVALID_ARGUMENT",
+        ),
+    )
+    result = BenchmarkRunner(_executor(provider, _ControlledRuntime())).run_case(
+        _case(fixture), fixture, (BenchmarkStrategy.GEMINI_ONLY,)
+    )[0]
+
+    assert result.provider_error_kind == ProviderErrorKind.INVALID_REQUEST
+    assert result.provider_http_status == 400
+    assert result.provider_error_status == "INVALID_ARGUMENT"
+    assert result.provider_error_message == "response_format schema is invalid"
+    serialized = result.model_dump_json()
+    for forbidden in (str(fixture.resolve()), "prompt", "stdout", "stderr", "secret"):
+        assert forbidden not in serialized
 
 
 def test_codex_only_failure_uses_controlled_rollback(tmp_path: Path):
