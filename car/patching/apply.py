@@ -187,11 +187,6 @@ class SafePatchApplier:
                 PatchApplyFailureKind.HUNK_CONTEXT_MISMATCH,
                 "target is not supported UTF-8 text",
             ) from error
-        if raw and not raw.endswith(b"\n"):
-            raise _ApplyFailure(
-                PatchApplyFailureKind.HUNK_CONTEXT_MISMATCH,
-                "files without a final newline are unsupported",
-            )
         without_crlf = text.replace("\r\n", "")
         if "\r" in without_crlf or ("\r\n" in text and "\n" in without_crlf):
             raise _ApplyFailure(
@@ -200,7 +195,13 @@ class SafePatchApplier:
             )
         newline = "\r\n" if "\r\n" in text else "\n"
         source = text.splitlines()
-        return self._apply_hunks(source, file_patch.hunks, newline, is_create=False).encode("utf-8")
+        return self._apply_hunks(
+            source,
+            file_patch.hunks,
+            newline,
+            is_create=False,
+            source_ends_with_newline=not raw or raw.endswith(b"\n"),
+        ).encode("utf-8")
 
     def _structural_check(
         self, root: Path, target: Path, file_patch: ParsedFilePatch
@@ -262,10 +263,17 @@ class SafePatchApplier:
         return None
 
     def _apply_hunks(
-        self, source: list[str], hunks: list[ParsedHunk], newline: str, *, is_create: bool
+        self,
+        source: list[str],
+        hunks: list[ParsedHunk],
+        newline: str,
+        *,
+        is_create: bool,
+        source_ends_with_newline: bool = True,
     ) -> str:
         output: list[str] = []
         cursor = 0
+        result_ends_with_newline = source_ends_with_newline
         for hunk in hunks:
             start = hunk.old_start if is_create else max(hunk.old_start - 1, 0)
             if start < cursor or start < 0 or start > len(source):
@@ -277,11 +285,30 @@ class SafePatchApplier:
                 raise _ApplyFailure(
                     PatchApplyFailureKind.HUNK_CONTEXT_MISMATCH, "hunk context differs from target"
                 )
+            touches_source_eof = start + hunk.old_count == len(source)
+            if not hunk.old_ends_with_newline and (
+                not touches_source_eof or source_ends_with_newline
+            ):
+                raise _ApplyFailure(
+                    PatchApplyFailureKind.HUNK_CONTEXT_MISMATCH,
+                    "newline marker differs from target",
+                )
+            if not hunk.new_ends_with_newline:
+                if not touches_source_eof:
+                    raise _ApplyFailure(
+                        PatchApplyFailureKind.HUNK_RANGE_INVALID,
+                        "newline marker is not at target end",
+                    )
+                result_ends_with_newline = False
+            elif not hunk.old_ends_with_newline:
+                result_ends_with_newline = True
             output.extend(source[cursor:start])
             output.extend(line.content for line in hunk.lines if line.prefix in {" ", "+"})
             cursor = start + hunk.old_count
         output.extend(source[cursor:])
-        return newline.join(output) + newline
+        if not output:
+            return ""
+        return newline.join(output) + (newline if result_ends_with_newline else "")
 
     def _is_protected(self, path: str) -> bool:
         components = path.split("/")

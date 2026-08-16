@@ -213,6 +213,7 @@ class ControlledCodexWritePipeline:
                 workspace_created=True,
                 codex_result=codex,
                 delta_result=validation,
+                patch_apply_result=transaction.result,
             ), fresh
         detected = self._detector.detect(fresh, baseline, policy)
         validated = self._validator.validate(
@@ -332,6 +333,7 @@ def _failure(
     workspace_created: bool = False,
     codex_result: object | None = None,
     delta_result: object | None = None,
+    patch_apply_result=None,
     application_result=None,
     source_state: CodexSourceState = CodexSourceState.UNCHANGED,
 ) -> ControlledCodexWritePipelineResult:
@@ -344,6 +346,7 @@ def _failure(
         workspace_created=workspace_created,
         codex_result=codex_result,
         delta_result=delta_result,
+        patch_apply_result=patch_apply_result,
         application_result=application_result,
         message="controlled Codex scratch proposal was not accepted",
     )

@@ -8,7 +8,7 @@ from car.application.coding import CodingPipelineOutcome
 from car.benchmark.models import BenchmarkStrategy
 from car.coding.models import normalize_repository_relative_path
 from car.economics.models import ExecutionCost
-from car.patching.models import PatchViolationKind
+from car.patching.models import PatchApplyFailureKind, PatchViolationKind
 from car.providers.models import ProviderErrorKind
 from car.telemetry.models import ExecutionTelemetry, FinalOutcome
 
@@ -53,6 +53,8 @@ class BenchmarkExecutionOutcome(BaseModel):
     task_changed_paths: tuple[str, ...] = ()
     auxiliary_changed_paths: tuple[str, ...] = ()
     pipeline_outcome: CodingPipelineOutcome | None = None
+    patch_apply_failure_kind: PatchApplyFailureKind | None = None
+    patch_apply_path: str | None = None
     provider_error_kind: ProviderErrorKind | None = None
     provider_http_status: int | None = Field(default=None, ge=100, le=599)
     provider_error_status: str | None = Field(default=None, max_length=64)
@@ -62,6 +64,11 @@ class BenchmarkExecutionOutcome(BaseModel):
     @classmethod
     def rejected_paths_are_repository_relative(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(normalize_repository_relative_path(value) for value in values)
+
+    @field_validator("patch_apply_path")
+    @classmethod
+    def patch_apply_path_is_repository_relative(cls, value: str | None) -> str | None:
+        return normalize_repository_relative_path(value) if value is not None else None
 
 
 class BenchmarkTaskResult(BaseModel):
@@ -82,6 +89,8 @@ class BenchmarkTaskResult(BaseModel):
     task_changed_paths: tuple[str, ...] = ()
     auxiliary_changed_paths: tuple[str, ...] = ()
     pipeline_outcome: CodingPipelineOutcome | None = None
+    patch_apply_failure_kind: PatchApplyFailureKind | None = None
+    patch_apply_path: str | None = None
     provider_error_kind: ProviderErrorKind | None = None
     provider_http_status: int | None = Field(default=None, ge=100, le=599)
     provider_error_status: str | None = Field(default=None, max_length=64)
@@ -91,3 +100,8 @@ class BenchmarkTaskResult(BaseModel):
     @classmethod
     def rejected_paths_are_repository_relative(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(normalize_repository_relative_path(value) for value in values)
+
+    @field_validator("patch_apply_path")
+    @classmethod
+    def patch_apply_path_is_repository_relative(cls, value: str | None) -> str | None:
+        return normalize_repository_relative_path(value) if value is not None else None

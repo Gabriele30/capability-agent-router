@@ -143,6 +143,22 @@ def test_modify_preserves_crlf(tmp_path: Path):
     assert target.read_bytes() == b"value = 2\r\n"
 
 
+def test_modify_without_final_newline_uses_standard_newline_markers(tmp_path: Path):
+    target = tmp_path / "a.py"
+    target.write_bytes(b"value = 1")
+    body = (
+        "--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n"
+        "-value = 1\n\\ No newline at end of file\n"
+        "+value = 2\n\\ No newline at end of file\n"
+    )
+    patch_set = validated(tmp_path, proposal(change("a.py", body)), "a.py")
+
+    transaction = SafePatchApplier().apply(tmp_path, patch_set)
+
+    assert transaction.result.succeeded
+    assert target.read_bytes() == b"value = 2"
+
+
 def test_context_change_after_validation_is_never_overwritten(tmp_path: Path):
     target = tmp_path / "a.py"
     target.write_bytes(b"value = 1\n")

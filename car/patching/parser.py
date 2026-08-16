@@ -89,6 +89,8 @@ def _parse_hunks(lines: list[str]) -> list[ParsedHunk]:
         )
         position += 1
         hunk_lines: list[ParsedHunkLine] = []
+        old_ends_with_newline = True
+        new_ends_with_newline = True
         while position < len(lines) and not lines[position].startswith("@@ "):
             line = lines[position]
             if line.startswith(("--- ", "+++ ")):
@@ -96,24 +98,38 @@ def _parse_hunks(lines: list[str]) -> list[ParsedHunk]:
                     PatchViolationKind.MULTIPLE_FILES_IN_CHANGE,
                     "a change must contain exactly one file diff",
                 )
+            if line == "\\ No newline at end of file":
+                if not hunk_lines:
+                    raise PatchParseError(
+                        PatchViolationKind.HUNK_INVALID, "newline marker without hunk line"
+                    )
+                prefix = hunk_lines[-1].prefix
+                if prefix == "-":
+                    old_ends_with_newline = False
+                elif prefix == "+":
+                    new_ends_with_newline = False
+                else:
+                    old_ends_with_newline = False
+                    new_ends_with_newline = False
+                position += 1
+                continue
             if not line or line[0] not in {" ", "+", "-"}:
                 raise PatchParseError(PatchViolationKind.HUNK_INVALID, "invalid hunk line")
             hunk_lines.append(ParsedHunkLine(prefix=line[0], content=line[1:]))
             position += 1
         if not hunk_lines:
             raise PatchParseError(PatchViolationKind.HUNK_INVALID, "empty hunk")
-        # Provider-authored headers sometimes contain stale line counts.  The body
-        # is the sole deterministic source for those counts: it is already fully
-        # parsed here and every line has an unambiguous unified-diff prefix.
-        # Start locations and all patch content remain provider supplied and are
-        # still checked strictly by the validator and applier.
-        old_count, new_count = _canonical_hunk_counts(hunk_lines)
+        actual_old_count, actual_new_count = _canonical_hunk_counts(hunk_lines)
+        if (old_count, new_count) != (actual_old_count, actual_new_count):
+            raise PatchParseError(PatchViolationKind.HUNK_COUNT_MISMATCH, "hunk count mismatch")
         hunks.append(
             ParsedHunk(
                 old_start=old_start,
                 old_count=old_count,
                 new_start=new_start,
                 new_count=new_count,
+                old_ends_with_newline=old_ends_with_newline,
+                new_ends_with_newline=new_ends_with_newline,
                 lines=hunk_lines,
             )
         )

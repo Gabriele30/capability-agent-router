@@ -153,7 +153,7 @@ def test_scratch_delta_is_discarded_and_only_final_proposal_reaches_source(git_r
     assert verification.calls == 1
 
 
-def test_final_proposal_canonicalizes_hunk_counts_before_strict_application(git_repository: Path):
+def test_final_proposal_with_mismatched_hunk_counts_fails_closed(git_repository: Path):
     runtime = _ScratchRuntime(
         _proposal(
             [
@@ -172,8 +172,9 @@ def test_final_proposal_canonicalizes_hunk_counts_before_strict_application(git_
 
     result = _execute(git_repository, runtime)
 
-    assert result.accepted
-    assert (git_repository / "README.md").read_text(encoding="utf-8") == "# Canonicalized\n"
+    assert not result.accepted
+    assert result.failure_kind == CodexWriteFailureKind.UNAUTHORIZED_CHANGE
+    assert (git_repository / "README.md").read_text(encoding="utf-8") == "# Test\n"
 
 
 def test_missing_or_malformed_final_proposal_fails_closed_and_keeps_usage(git_repository: Path):

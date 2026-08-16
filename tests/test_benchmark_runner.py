@@ -104,6 +104,24 @@ class _InvalidProposalProvider(_Provider):
         return object()
 
 
+class _StalePatchProvider(_Provider):
+    def propose(self, context):
+        self.calls += 1
+        return CodingProposal(
+            summary="synthetic stale patch",
+            changes=[
+                ProposedFileChange(
+                    path="target.py",
+                    operation=FileChangeOperation.MODIFY,
+                    patch=(
+                        "--- a/target.py\n+++ b/target.py\n@@ -1 +1 @@\n"
+                        "-stale context\n+value = 2\n"
+                    ),
+                )
+            ],
+        )
+
+
 class _UnexpectedProvider(_Provider):
     def propose(self, context):
         self.calls += 1
@@ -318,6 +336,21 @@ def test_gemini_only_failure_rolls_back_without_codex(tmp_path: Path):
         assert (fixture / "target.py").read_text(encoding="utf-8") == "value = 1\n"
     finally:
         spaces.cleanup()
+
+
+def test_gemini_patch_apply_diagnostic_is_bounded_and_repository_relative(tmp_path: Path):
+    fixture = _fixture(tmp_path)
+    result = BenchmarkRunner(
+        _executor(_StalePatchProvider("value = 2"), _ControlledRuntime())
+    ).run_case(_case(fixture), fixture, (BenchmarkStrategy.GEMINI_ONLY,))[0]
+
+    assert result.pipeline_outcome == CodingPipelineOutcome.PATCH_APPLY_FAILED
+    assert result.patch_apply_failure_kind is not None
+    assert result.patch_apply_failure_kind.value == "hunk_context_mismatch"
+    assert result.patch_apply_path == "target.py"
+    serialized = result.model_dump_json()
+    for forbidden in (str(fixture.resolve()), "stale context", "stdout", "stderr"):
+        assert forbidden not in serialized
 
 
 @pytest.mark.parametrize(
@@ -827,7 +860,7 @@ def test_large_benchmark_repository_keeps_context_bounded_and_finalizes_small_pr
     tmp_path: Path,
 ):
     fixture = _fixture(tmp_path)
-    for number in range(30):
+    for number in range(520):
         (fixture / f"support_{number:02}.py").write_text(
             f"VALUE_{number} = {number}\n", encoding="utf-8"
         )

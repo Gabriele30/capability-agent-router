@@ -24,6 +24,8 @@ class ParsedHunk(BaseModel):
     old_count: int = Field(ge=0)
     new_start: int = Field(ge=0)
     new_count: int = Field(ge=0)
+    old_ends_with_newline: bool = True
+    new_ends_with_newline: bool = True
     lines: list[ParsedHunkLine] = Field(min_length=1)
 
 

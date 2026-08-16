@@ -20,6 +20,7 @@ from car.codex_write.runtime_models import ControlledCodexWriteResult
 from car.codex_write.verification import CodexSourceVerificationCoordinator
 from car.codex_write.workspace import IsolatedWorkspaceManager
 from car.execution.models import CommandResult, CommandSpec
+from car.patching.models import PatchApplyFailureKind
 from car.verification.models import VerificationPlan, VerificationResult, VerificationStatus
 
 
@@ -83,6 +84,19 @@ class _SyntheticRuntime:
             baseline_digest=request.workspace.baseline_digest,
             baseline_head_oid=request.workspace.baseline_head_oid,
         )
+
+
+class _StaleProposalRuntime(_SyntheticRuntime):
+    """Return a structured proposal whose exact old context cannot apply."""
+
+    def execute(self, request, authorization):
+        result = super().execute(request, authorization)
+        assert result.final_message is not None
+        proposal = json.loads(result.final_message)
+        proposal["changes"][0]["patch"] = (
+            "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-stale context\n+Codex D\n"
+        )
+        return result.model_copy(update={"final_message": json.dumps(proposal)})
 
 
 def _command(root: Path) -> CommandSpec:
@@ -559,6 +573,27 @@ def test_pipeline_failure_paths_do_not_accept_or_leave_workspace(git_repository:
     )
     assert no_change.failure_kind == CodexWriteFailureKind.CODEX_INVALID_OUTPUT
     assert no_change.workspace_cleanup_succeeded
+
+
+def test_pipeline_preserves_safe_patch_apply_diagnostic(git_repository: Path):
+    result = _pipeline(
+        git_repository,
+        _StaleProposalRuntime({"README.md": b"Codex D\n"}),
+        VerificationStatus.PASSED,
+    ).execute(
+        git_repository,
+        "update readme",
+        ("README.md",),
+        VerificationPlan(commands=[_command(git_repository)]),
+        CodexWritePolicy(enabled=True),
+        CodexWriteAuthorization(authorized=True),
+    )
+
+    assert result.failure_kind == CodexWriteFailureKind.SOURCE_APPLICATION_FAILED
+    assert result.patch_apply_result is not None
+    assert result.patch_apply_result.failure_kind == PatchApplyFailureKind.HUNK_CONTEXT_MISMATCH
+    assert result.patch_apply_result.failure_path == "README.md"
+    assert str(git_repository.resolve()) not in result.model_dump_json()
 
 
 def test_pipeline_disabled_or_unauthorized_has_zero_runtime_calls(git_repository: Path):

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from car.authorization import DEFAULT_SAFE_AUXILIARY_PATHS
 from car.coding.models import normalize_repository_relative_path
-from car.patching.models import PatchValidationPolicy
+from car.patching.models import PatchApplyResult, PatchValidationPolicy
 
 
 class _StrictModel(BaseModel):
@@ -315,6 +315,7 @@ class ControlledCodexWritePipelineResult(_StrictModel):
     workspace_cleanup_succeeded: bool | None = None
     codex_result: object | None = None
     delta_result: object | None = None
+    patch_apply_result: PatchApplyResult | None = None
     application_result: CodexSourceApplicationResult | None = None
     verification_result: CodexSourceVerificationResult | None = None
     changed_paths: list[str] = Field(default_factory=list)

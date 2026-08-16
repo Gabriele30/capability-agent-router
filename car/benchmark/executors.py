@@ -109,6 +109,16 @@ class CARBenchmarkExecutor:
             ),
             patch_violations=_patch_violations(pipeline.patch_validation if pipeline else None),
             pipeline_outcome=pipeline.outcome if pipeline else None,
+            patch_apply_failure_kind=(
+                pipeline.patch_apply.failure_kind
+                if pipeline and pipeline.patch_apply is not None
+                else None
+            ),
+            patch_apply_path=(
+                pipeline.patch_apply.failure_path
+                if pipeline and pipeline.patch_apply is not None
+                else None
+            ),
             provider_error_kind=(
                 pipeline.coding_attempt.error_kind
                 if pipeline and pipeline.coding_attempt is not None
@@ -180,6 +190,16 @@ class CARBenchmarkExecutor:
             patch_violations=_patch_violations(getattr(result, "delta_result", None)),
             task_changed_paths=_task_changed_paths(getattr(result, "delta_result", None)),
             auxiliary_changed_paths=_auxiliary_changed_paths(getattr(result, "delta_result", None)),
+            patch_apply_failure_kind=(
+                result.patch_apply_result.failure_kind
+                if result.patch_apply_result is not None
+                else None
+            ),
+            patch_apply_path=(
+                result.patch_apply_result.failure_path
+                if result.patch_apply_result is not None
+                else None
+            ),
         )
 
     def _car(self, context) -> BenchmarkExecutionOutcome:
@@ -226,6 +246,24 @@ class CARBenchmarkExecutor:
                 else _auxiliary_changed_paths(pipeline.patch_validation if pipeline else None)
             ),
             pipeline_outcome=pipeline.outcome if pipeline else None,
+            patch_apply_failure_kind=(
+                pipeline.patch_apply.failure_kind
+                if pipeline and pipeline.patch_apply is not None
+                else (
+                    controlled.patch_apply_result.failure_kind
+                    if controlled and controlled.patch_apply_result is not None
+                    else None
+                )
+            ),
+            patch_apply_path=(
+                pipeline.patch_apply.failure_path
+                if pipeline and pipeline.patch_apply is not None
+                else (
+                    controlled.patch_apply_result.failure_path
+                    if controlled and controlled.patch_apply_result is not None
+                    else None
+                )
+            ),
             provider_error_kind=(
                 pipeline.coding_attempt.error_kind
                 if pipeline and pipeline.coding_attempt is not None

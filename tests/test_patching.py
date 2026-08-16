@@ -281,18 +281,14 @@ def test_unsupported_diff_features_are_rejected(
     assert_violation(validate(tmp_path, proposal(body=body)), kind)
 
 
-def test_hunk_counts_are_canonicalized_from_a_valid_body(tmp_path: Path):
+def test_hunk_count_mismatch_fails_closed(tmp_path: Path):
     (tmp_path / "car").mkdir()
     (tmp_path / "car" / "a.py").write_text("value = 1\n", encoding="utf-8")
     bad_count = "--- a/car/a.py\n+++ b/car/a.py\n@@ -1,2 +1,2 @@\n-value = 1\n+value = 2\n"
-    result = validate(tmp_path, proposal(body=bad_count))
-
-    assert result.valid and result.patch_set is not None
-    hunk = result.patch_set.files[0].hunks[0]
-    assert (hunk.old_start, hunk.old_count, hunk.new_start, hunk.new_count) == (1, 1, 1, 1)
-    transaction = SafePatchApplier().apply(tmp_path, result.patch_set)
-    assert transaction.result.succeeded
-    assert (tmp_path / "car" / "a.py").read_text(encoding="utf-8") == "value = 2\n"
+    assert_violation(
+        validate(tmp_path, proposal(body=bad_count)), PatchViolationKind.HUNK_COUNT_MISMATCH
+    )
+    assert (tmp_path / "car" / "a.py").read_text(encoding="utf-8") == "value = 1\n"
 
 
 def test_correct_hunk_counts_remain_unchanged(tmp_path: Path):
@@ -306,7 +302,7 @@ def test_correct_hunk_counts_remain_unchanged(tmp_path: Path):
     assert (hunk.old_start, hunk.old_count, hunk.new_start, hunk.new_count) == (1, 1, 1, 1)
 
 
-def test_hunk_count_canonicalization_preserves_path_authorization_and_matching(tmp_path: Path):
+def test_hunk_count_mismatch_does_not_bypass_path_authorization(tmp_path: Path):
     (tmp_path / "car").mkdir()
     (tmp_path / "car" / "a.py").write_text("value = 1\n", encoding="utf-8")
     wrong_count = "--- a/car/b.py\n+++ b/car/b.py\n@@ -1,2 +1,2 @@\n-old\n+new\n"
@@ -317,15 +313,15 @@ def test_hunk_count_canonicalization_preserves_path_authorization_and_matching(t
     )
     mismatch = validate(tmp_path, proposal("car/a.py", body=wrong_count))
 
-    assert_violation(unauthorized, PatchViolationKind.UNAUTHORIZED_FILE)
-    assert_violation(mismatch, PatchViolationKind.PATH_MISMATCH)
+    assert_violation(unauthorized, PatchViolationKind.HUNK_COUNT_MISMATCH)
+    assert_violation(mismatch, PatchViolationKind.HUNK_COUNT_MISMATCH)
 
 
 def test_malformed_and_unapplicable_hunks_still_fail_closed(tmp_path: Path):
     (tmp_path / "car").mkdir()
     (tmp_path / "car" / "a.py").write_text("value = 1\n", encoding="utf-8")
     malformed = "--- a/car/a.py\n+++ b/car/a.py\n@@ -1 +1 @@\n?invalid\n"
-    bad_location = "--- a/car/a.py\n+++ b/car/a.py\n@@ -9,2 +9,2 @@\n-value = 1\n+value = 2\n"
+    bad_location = "--- a/car/a.py\n+++ b/car/a.py\n@@ -9 +9 @@\n-value = 1\n+value = 2\n"
 
     assert_violation(validate(tmp_path, proposal(body=malformed)), PatchViolationKind.HUNK_INVALID)
     parsed = validate(tmp_path, proposal(body=bad_location))

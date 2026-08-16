@@ -132,7 +132,7 @@ def test_large_repository_authorization_is_exact_but_provider_context_is_bounded
     tmp_path: Path,
 ) -> None:
     instance = _repository(tmp_path)
-    for number in range(MAX_PROVIDER_CONTEXT_FILES + 15):
+    for number in range(520):
         (tmp_path / f"module_{number:02}.py").write_text(
             f"def helper_{number}():\n    return {number}\n", encoding="utf-8"
         )

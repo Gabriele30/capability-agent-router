@@ -67,6 +67,8 @@ class BenchmarkRunner:
                 task_changed_paths = outcome.task_changed_paths
                 auxiliary_changed_paths = outcome.auxiliary_changed_paths
                 pipeline_outcome = outcome.pipeline_outcome
+                patch_apply_failure_kind = outcome.patch_apply_failure_kind
+                patch_apply_path = outcome.patch_apply_path
                 provider_error_kind = outcome.provider_error_kind
                 provider_http_status = outcome.provider_http_status
                 provider_error_status = outcome.provider_error_status
@@ -78,6 +80,8 @@ class BenchmarkRunner:
                 task_changed_paths = ()
                 auxiliary_changed_paths = ()
                 pipeline_outcome = None
+                patch_apply_failure_kind = None
+                patch_apply_path = None
                 provider_error_kind = None
                 provider_http_status = None
                 provider_error_status = None
@@ -111,6 +115,8 @@ class BenchmarkRunner:
                 task_changed_paths=task_changed_paths,
                 auxiliary_changed_paths=auxiliary_changed_paths,
                 pipeline_outcome=pipeline_outcome,
+                patch_apply_failure_kind=patch_apply_failure_kind,
+                patch_apply_path=patch_apply_path,
                 provider_error_kind=provider_error_kind,
                 provider_http_status=provider_http_status,
                 provider_error_status=provider_error_status,
