@@ -868,6 +868,9 @@ def swebench_run(
     live: Annotated[
         bool, typer.Option("--live", help="Acknowledge live provider and evaluator execution.")
     ] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print the structured SWE-bench run result as JSON.")
+    ] = False,
 ) -> None:
     """Run one opt-in SWE-bench instance through CAR and the native oracle."""
     if not live:
@@ -889,9 +892,35 @@ def swebench_run(
     except (OSError, RuntimeError, ValueError) as error:
         console.print(f"[red]SWE-bench execution failed:[/] {error}")
         raise typer.Exit(code=1) from error
+    if json_output:
+        console.print_json(
+            json.dumps(
+                {
+                    "result": run.result.model_dump(mode="json"),
+                    "evaluator": (
+                        run.evaluator.model_dump(mode="json") if run.evaluator is not None else None
+                    ),
+                }
+            )
+        )
+        return
     console.print(f"Instance: {run.result.case_id}")
     console.print(f"Strategy: {run.result.strategy.value}")
     console.print(f"Verified success: {run.result.verified_success}")
+    if run.result.pipeline_outcome is not None:
+        console.print(f"Pipeline outcome: {run.result.pipeline_outcome.value}")
+    if run.result.provider_error_kind is not None:
+        console.print(f"Provider error kind: {run.result.provider_error_kind.value}")
+    if run.result.provider_http_status is not None:
+        console.print(f"Provider HTTP status: {run.result.provider_http_status}")
+    if run.result.provider_error_status is not None:
+        console.print(f"Provider error status: {run.result.provider_error_status}")
+    if run.result.provider_error_message is not None:
+        console.print(f"Provider error message: {run.result.provider_error_message}")
+    if run.evaluator is not None:
+        console.print(f"Evaluator: {run.evaluator.status.value}")
+        if run.evaluator.diagnostic is not None:
+            console.print(f"Evaluator diagnostic: {run.evaluator.diagnostic}")
 
 
 def main() -> None:
